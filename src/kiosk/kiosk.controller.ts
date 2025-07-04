@@ -182,23 +182,4 @@ export class KioskController {
       contributions: { canShow: true },
     };
   }
-  
-  @Get('hello')
-  @ApiResponse({
-    status: 200,
-    description: 'Hello World',
-  })
-  async hello() {
-    this.recordService.debug(`GET: hello`);
-    return this.nats.send('person.hello', {});
-  }
-
-  @Get('hello/:id')
-  @ApiResponse({
-    status: 200,
-    description: 'Hello Person with ID',
-  })
-  async helloWithId(@Param('id', ParseIntPipe) id: number) {
-    return this.nats.send('person.helloPersonWithId', { id });
-  }
 }
