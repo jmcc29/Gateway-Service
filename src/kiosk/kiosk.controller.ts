@@ -31,15 +31,15 @@ export class KioskController {
     private readonly recordService: RecordService,
   ) {}
 
-  @Get('person/:identityCard')
-  @ApiResponse({
-    status: 200,
-    description: 'Mostrar el listado de huellas digitales',
-  })
-  async showListFingerprint(@Param('identityCard') identityCard: string) {
-    this.recordService.debug(`GET: person/${identityCard}`);
-    return this.nats.send('kiosk.getDataPerson', identityCard);
-  }
+  // @Get('person/:identityCard')
+  // @ApiResponse({
+  //   status: 200,
+  //   description: 'Mostrar el listado de huellas digitales',
+  // })
+  // async showListFingerprint(@Param('identityCard') identityCard: string) {
+  //   this.recordService.debug(`GET: person/${identityCard}`);
+  //   return this.nats.send('kiosk.getDataPerson', identityCard);
+  // }
 
   @Post('saveDataKioskAuth')
   @ApiBody({ type: SaveDataKioskAuthDto })
@@ -181,5 +181,14 @@ export class KioskController {
       loans: { canShow: loansResponse.hasLoan },
       contributions: { canShow: true },
     };
+  }
+  @Get('person/:id')
+  @ApiResponse({
+    status: 200,
+    description: 'Mostrar el persona por id',
+  })
+  async showPerson(@Param('id', ParseIntPipe) personId: number) {
+    this.recordService.debug(`GET: person/${personId}`);
+    return this.nats.send('kiosk.getDataPersonById', personId);
   }
 }
