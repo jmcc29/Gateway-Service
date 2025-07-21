@@ -19,8 +19,9 @@ import {
   FilteredPaginationDto,
 } from './dto';
 import { ApiTags, ApiResponse, ApiBody } from '@nestjs/swagger';
-import { AuthGuard } from 'src/auth/guards/auth.guard';
+// import { AuthGuard } from 'src/auth/guards/auth.guard';
 import { NatsService, RecordService } from 'src/common';
+import { Roles } from 'nest-keycloak-connect';
 
 @ApiTags('persons')
 @Controller('persons')
@@ -38,7 +39,9 @@ export class PersonsController {
   async showListFingerprint() {
     return this.nats.send('person.showListFingerprint', {});
   }
-  @UseGuards(AuthGuard)
+
+  // @UseGuards(AuthGuard)
+  @Roles({ roles: ['admin', 'user'] })
   @Get()
   @ApiResponse({ status: 200, description: 'Mostrar todas las personas' })
   findAllPersons(@Query() filterDto: FilteredPaginationDto) {
@@ -102,7 +105,7 @@ export class PersonsController {
     return this.nats.send('person.findAffiliates', { id });
   }
 
-  @UseGuards(AuthGuard)
+  // @UseGuards(AuthGuard)
   @Post('createPersonFingerprint')
   @ApiBody({ type: CreatePersonFingerprintDto }) // Esto especifica que el cuerpo de la solicitud debe ser del tipo CreatePersonFingerprintDto
   @ApiResponse({

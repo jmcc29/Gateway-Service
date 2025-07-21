@@ -8,6 +8,8 @@ import { CommonModule } from './common/common.module';
 import { DatabaseModule } from './database/database.module';
 import { PracticeModule } from './practice/practice.module';
 import { OproviderAuthModule } from './oprovider-auth/oprovider-auth.module';
+import { KeycloakConnectModule } from 'nest-keycloak-connect';
+import { KeycloakEnvs } from './config';
 
 @Module({
   imports: [
@@ -20,6 +22,12 @@ import { OproviderAuthModule } from './oprovider-auth/oprovider-auth.module';
     DatabaseModule,
     PracticeModule,
     OproviderAuthModule,
+    KeycloakConnectModule.register({
+      authServerUrl: KeycloakEnvs.authServerUrl,
+      realm: KeycloakEnvs.realm,
+      clientId: KeycloakEnvs.clientId,
+      secret: KeycloakEnvs.secret,
+    }),
   ],
 })
 export class AppModule {}

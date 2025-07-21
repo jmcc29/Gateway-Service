@@ -17,6 +17,14 @@ interface EnvVars {
   DB_HOST: string;
   DB_PORT: number;
   DB_USERNAME: string;
+
+  // Keycloak configuration
+  KEYCLOAK_URL?: string;
+  KEYCLOAK_REALM?: string;
+  KEYCLOAK_CLIENT_ID?: string;
+  KEYCLOAK_CLIENT_SECRET?: string;
+  KEYCLOAK_COOKIE_KEY?: string;
+  KEYCLOAK_USE_NEST_LOGGER?: boolean;
 }
 
 const envsSchema = joi
@@ -34,6 +42,14 @@ const envsSchema = joi
     DB_HOST: joi.string().required(),
     DB_PORT: joi.number().required(),
     DB_USERNAME: joi.string().required(),
+
+    // Keycloak configuration
+    KEYCLOAK_URL: joi.string().uri().optional(),
+    KEYCLOAK_REALM: joi.string().optional(),
+    KEYCLOAK_CLIENT_ID: joi.string().optional(),
+    KEYCLOAK_CLIENT_SECRET: joi.string().optional(),
+    KEYCLOAK_COOKIE_KEY: joi.string().optional(),
+    KEYCLOAK_USE_NEST_LOGGER: joi.boolean().optional(),
   })
   .unknown(true);
 
@@ -65,12 +81,19 @@ export const DbEnvs = {
   dbUsername: envVars.DB_USERNAME,
 };
 
+export const KeycloakEnvs = {
+  authServerUrl: envVars.KEYCLOAK_URL,
+  realm: envVars.KEYCLOAK_REALM,
+  clientId: envVars.KEYCLOAK_CLIENT_ID,
+  secret: envVars.KEYCLOAK_CLIENT_SECRET,
+};
+
 export const FrontEnvs = {
   frontendServers: envVars.FRONTENDS_SERVERS,
 };
 
 export const PvtEnvs = {
-  PvtBeApiServer: envVars.PVT_BE_API_SERVER+"/api/v1",
-  PvtBackendApiServer: envVars.PVT_BACKEND_API_SERVER+"/api",
+  PvtBeApiServer: envVars.PVT_BE_API_SERVER + '/api/v1',
+  PvtBackendApiServer: envVars.PVT_BACKEND_API_SERVER + '/api',
   PvtHashSecret: envVars.PVT_HASH_SECRET,
 };

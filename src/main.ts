@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { FrontEnvs, PortEnvs } from './config';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { AuthGuard } from 'nest-keycloak-connect';
 
 async function bootstrap() {
   const logger = new Logger('Microservice-Gateway');
@@ -22,7 +23,7 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
-
+  // app.useGlobalGuards(app.get(RoleGuard));
   logger.log(`Gateway running on port ${PortEnvs.port}`);
 
   //Configuración swagger (Documentación de las APIS)
