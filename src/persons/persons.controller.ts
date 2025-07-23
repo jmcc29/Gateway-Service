@@ -18,10 +18,10 @@ import {
   CreatePersonFingerprintDto,
   FilteredPaginationDto,
 } from './dto';
-import { ApiTags, ApiResponse, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 // import { AuthGuard } from 'src/auth/guards/auth.guard';
 import { NatsService, RecordService } from 'src/common';
-import { Roles } from 'nest-keycloak-connect';
+import { AuthGuard, Roles } from 'nest-keycloak-connect';
 
 @ApiTags('persons')
 @Controller('persons')
@@ -40,8 +40,9 @@ export class PersonsController {
     return this.nats.send('person.showListFingerprint', {});
   }
 
-  // @UseGuards(AuthGuard)
-  @Roles({ roles: ['admin', 'user'] })
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth('access-token')
+  // @Roles({ roles: ['admin', 'user'] })
   @Get()
   @ApiResponse({ status: 200, description: 'Mostrar todas las personas' })
   findAllPersons(@Query() filterDto: FilteredPaginationDto) {

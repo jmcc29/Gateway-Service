@@ -3,8 +3,7 @@ import { AppModule } from './app.module';
 import { FrontEnvs, PortEnvs } from './config';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { AuthGuard } from 'nest-keycloak-connect';
-
+// import { AuthGuard } from 'nest-keycloak-connect';
 async function bootstrap() {
   const logger = new Logger('Microservice-Gateway');
 
@@ -23,7 +22,9 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
-  // app.useGlobalGuards(app.get(RoleGuard));
+
+  // app.useGlobalGuards(app.get(AuthGuard)); // Register the AuthGuard globally
+
   logger.log(`Gateway running on port ${PortEnvs.port}`);
 
   //Configuración swagger (Documentación de las APIS)
@@ -31,6 +32,16 @@ async function bootstrap() {
     .setTitle('APIS DOCUMENTATION')
     .setDescription('Documentation of the Muserpol Microservices APIs')
     .setVersion('1.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'Authorization',
+        in: 'header',
+      },
+      'access-token',
+    )
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
