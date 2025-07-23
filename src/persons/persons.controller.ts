@@ -21,7 +21,7 @@ import {
 import { ApiTags, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 // import { AuthGuard } from 'src/auth/guards/auth.guard';
 import { NatsService, RecordService } from 'src/common';
-import { AuthGuard, Roles } from 'nest-keycloak-connect';
+import { AuthGuard, RoleGuard, Roles} from 'nest-keycloak-connect';
 
 @ApiTags('persons')
 @Controller('persons')
@@ -40,15 +40,18 @@ export class PersonsController {
     return this.nats.send('person.showListFingerprint', {});
   }
 
-  @UseGuards(AuthGuard)
   @ApiBearerAuth('access-token')
-  // @Roles({ roles: ['admin', 'user'] })
+  @UseGuards(AuthGuard, RoleGuard)
+  @Roles({ roles: ['rol2'] })
   @Get()
   @ApiResponse({ status: 200, description: 'Mostrar todas las personas' })
   findAllPersons(@Query() filterDto: FilteredPaginationDto) {
     return this.nats.send('person.findAll', filterDto);
   }
 
+  @ApiBearerAuth('access-token')
+  @UseGuards(AuthGuard, RoleGuard)
+  @Roles({ roles: ['rol1'] })
   @Get(':term')
   @ApiResponse({ status: 200, description: 'Mostrar una persona' })
   async findOnePersons(@Param('term') term: string) {

@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { OproviderAuthService } from './oprovider-auth.service';
 import { OproviderAuthController } from './oprovider-auth.controller';
 import { NatsService } from 'src/common';
-import { KeycloakConnectModule } from 'nest-keycloak-connect';
+import { KeycloakConnectModule, PolicyEnforcementMode, TokenValidation } from 'nest-keycloak-connect';
 import { KeycloakEnvs } from 'src/config';
 @Module({
   imports: [KeycloakConnectModule.register({
@@ -11,6 +11,8 @@ import { KeycloakEnvs } from 'src/config';
     realm: KeycloakEnvs.realm,
     clientId: KeycloakEnvs.clientId,
     secret: KeycloakEnvs.secret,
+    // policyEnforcement: PolicyEnforcementMode.ENFORCING,
+    // tokenValidation: TokenValidation.ONLINE,
   })],
   controllers: [OproviderAuthController],
   providers: [OproviderAuthService, NatsService],
