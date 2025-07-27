@@ -41,8 +41,8 @@ export class PersonsController {
   }
 
   @ApiBearerAuth('access-token')
-  @UseGuards(AuthGuard, RoleGuard)
-  @Roles({ roles: ['rol2'] })
+  @UseGuards(AuthGuard/*, RoleGuard*/)
+  // @Roles({ roles: ['rol2'] })
   @Get()
   @ApiResponse({ status: 200, description: 'Mostrar todas las personas' })
   findAllPersons(@Query() filterDto: FilteredPaginationDto) {

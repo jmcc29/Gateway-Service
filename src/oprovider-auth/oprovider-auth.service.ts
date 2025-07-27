@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { NatsService} from 'src/common';
-import { LoginUserDto } from './dto/login-user.dto';
+import { LoginUserDto, LoginLdapUserDto } from './dto';
 
 @Injectable()
 export class OproviderAuthService {
     constructor( private readonly nats: NatsService) {}
+    async loginLdapKeycloak(dto: LoginLdapUserDto) {
+        const response = await this.nats.firstValue('ldap-auth.loginLdapKeycloak', dto);
+        return response;
+    }
     async login(dto: LoginUserDto) {
         const response = await this.nats.firstValue('auth.login', dto);
         return response;
