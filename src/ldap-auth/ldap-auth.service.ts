@@ -3,10 +3,10 @@ import { NatsService} from 'src/common';
 import { LoginUserDto, LoginLdapUserDto } from './dto';
 
 @Injectable()
-export class OproviderAuthService {
+export class LdapAuthService {
     constructor( private readonly nats: NatsService) {}
     async loginLdapKeycloak(dto: LoginLdapUserDto) {
-        const response = await this.nats.firstValue('ldap-auth.loginLdapKeycloak', dto);
+        const response = await this.nats.firstValue('ldap-auth.login', dto);
         return response;
     }
     async login(dto: LoginUserDto) {
