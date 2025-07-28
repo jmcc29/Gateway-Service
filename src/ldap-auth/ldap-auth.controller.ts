@@ -1,6 +1,6 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { LdapAuthService } from './ldap-auth.service';
-import { LoginUserDto, LoginLdapUserDto } from './dto';
+import { LoginLdapUserDto } from './dto';
 import { ApiTags, ApiResponse } from '@nestjs/swagger';
 
 @ApiTags('Auth LDAP')
