@@ -22,6 +22,8 @@ import { ApiTags, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 // import { AuthGuard } from 'src/auth/guards/auth.guard';
 import { NatsService, RecordService } from 'src/common';
 import { AuthGuard, RoleGuard, Roles} from 'nest-keycloak-connect';
+import { UserPermissionGuard } from 'src/ldap-auth/guards/user-permission.guard';
+import { PermissionProtected } from 'src/ldap-auth/decorators/permission.decorator';
 
 @ApiTags('persons')
 @Controller('persons')
@@ -31,6 +33,9 @@ export class PersonsController {
     private readonly recordService: RecordService,
   ) {}
 
+  @ApiBearerAuth('access-token')
+  @UseGuards( UserPermissionGuard )
+  @PermissionProtected("persons-showLIstFingerprint", "view")
   @Get('showListFingerprint')
   @ApiResponse({
     status: 200,
