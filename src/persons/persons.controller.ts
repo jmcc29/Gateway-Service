@@ -35,7 +35,7 @@ export class PersonsController {
 
   @ApiBearerAuth('access-token')
   @UseGuards( UserPermissionGuard )
-  @PermissionProtected("persons-showLIstFingerprint", "view")
+  @PermissionProtected("persons", "persons:view-fingerprint-list")
   @Get('showListFingerprint')
   @ApiResponse({
     status: 200,
@@ -46,8 +46,8 @@ export class PersonsController {
   }
 
   @ApiBearerAuth('access-token')
-  @UseGuards(AuthGuard/*, RoleGuard*/)
-  // @Roles({ roles: ['rol2'] })
+  @UseGuards( UserPermissionGuard )
+  @PermissionProtected("persons", "persons:view")
   @Get()
   @ApiResponse({ status: 200, description: 'Mostrar todas las personas' })
   findAllPersons(@Query() filterDto: FilteredPaginationDto) {
@@ -55,20 +55,26 @@ export class PersonsController {
   }
 
   @ApiBearerAuth('access-token')
-  @UseGuards(AuthGuard, RoleGuard)
-  @Roles({ roles: ['rol1'] })
+  @UseGuards( UserPermissionGuard )// @UseGuards(AuthGuard, RoleGuard)
+  @PermissionProtected("persons", "persons:view-single")// @Roles({ roles: ['rol1'] })
   @Get(':term')
   @ApiResponse({ status: 200, description: 'Mostrar una persona' })
   async findOnePersons(@Param('term') term: string) {
     return this.nats.send('person.findOne', { term, field: 'id' });
   }
 
+  @ApiBearerAuth('access-token')
+  @UseGuards( UserPermissionGuard )
+  @PermissionProtected("persons", "persons:create")
   @Post()
   @ApiResponse({ status: 200, description: 'Añadir una persona' })
   createProduct(@Body() createPersonDto: CreatePersonDto) {
     return this.nats.send('person.create', createPersonDto);
   }
 
+  @ApiBearerAuth('access-token')
+  @UseGuards( UserPermissionGuard )
+  @PermissionProtected("persons","persons:edit")
   @Patch(':id')
   @ApiResponse({ status: 200, description: 'Editar una persona' })
   patchProduct(@Param('id', ParseIntPipe) id: number, @Body() updatePersonDto: UpdatePersonDto) {
@@ -78,12 +84,18 @@ export class PersonsController {
     });
   }
 
+  @ApiBearerAuth('access-token')
+  @UseGuards( UserPermissionGuard )
+  @PermissionProtected("persons","persons:delete")
   @Delete(':id')
   @ApiResponse({ status: 200, description: 'Eliminar una persona' })
   deleteProduct(@Param('id') id: string) {
     return this.nats.send('person.delete', { id });
   }
 
+  @ApiBearerAuth('access-token')
+  @UseGuards( UserPermissionGuard )
+  @PermissionProtected("persons", "persons:view-details")
   @Get(':uuid/details')
   @ApiResponse({
     status: 200,
@@ -92,6 +104,10 @@ export class PersonsController {
   async findPerson(@Param('uuid', new ParseUUIDPipe()) uuid: string) {
     return this.nats.send('person.findOneWithFeatures', { uuid });
   }
+
+  @ApiBearerAuth('access-token')
+  @UseGuards( UserPermissionGuard )
+  @PermissionProtected("persons", "persons:view-beneficiaries")
   @Get(':personId/beneficiaries')
   @ApiResponse({
     status: 200,
@@ -105,6 +121,9 @@ export class PersonsController {
     return this.nats.send('person.showPersonsRelatedToAffiliate', { id });
   }
 
+  @ApiBearerAuth('access-token')
+  @UseGuards( UserPermissionGuard )
+  @PermissionProtected("persons", "persons:view-affiliates")
   @Get(':personId/affiliates')
   @ApiResponse({
     status: 200,
@@ -114,7 +133,9 @@ export class PersonsController {
     return this.nats.send('person.findAffiliates', { id });
   }
 
-  // @UseGuards(AuthGuard)
+  @ApiBearerAuth('access-token')
+  @UseGuards( UserPermissionGuard )
+  @PermissionProtected("persons", "persons:create-fingerprint")
   @Post('createPersonFingerprint')
   @ApiBody({ type: CreatePersonFingerprintDto }) // Esto especifica que el cuerpo de la solicitud debe ser del tipo CreatePersonFingerprintDto
   @ApiResponse({
@@ -152,6 +173,9 @@ export class PersonsController {
     return result;
   }
 
+  @ApiBearerAuth('access-token')
+  @UseGuards( UserPermissionGuard )
+  @PermissionProtected("persons", "persons:view-fingerprint")
   @Get('showPersonFingerprint/:id')
   @ApiResponse({
     status: 200,

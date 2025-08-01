@@ -49,7 +49,7 @@ export class UserPermissionGuard implements CanActivate {
       return true;
     } catch (err) {
       console.error('Error al evaluar permisos:', err);
-      throw new ForbiddenException('Error al validar permisos');
+      throw new ForbiddenException(err.message);
     }
   }
 }
