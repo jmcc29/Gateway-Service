@@ -11,7 +11,7 @@ import { LdapAuthModule } from './ldap-auth/ldap-auth.module';
 
 @Module({
   imports: [
-    AuthModule,
+    // AuthModule,
     PersonsModule,
     GeneralModule,
     AffiliatesModule,

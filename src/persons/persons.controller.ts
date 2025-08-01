@@ -21,10 +21,11 @@ import {
 import { ApiTags, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 // import { AuthGuard } from 'src/auth/guards/auth.guard';
 import { NatsService, RecordService } from 'src/common';
-import { AuthGuard, RoleGuard, Roles} from 'nest-keycloak-connect';
-import { UserPermissionGuard } from 'src/ldap-auth/guards/user-permission.guard';
-import { PermissionProtected } from 'src/ldap-auth/decorators/permission.decorator';
-
+// import { AuthGuard, RoleGuard, Roles} from 'nest-keycloak-connect';
+import { PermissionProtected } from 'src/ldap-auth/decorators/permission-protected.decorator';
+import { ValidTokenGuard, UserPermissionGuard } from 'src/ldap-auth/guards';
+import { ScopeProtected } from 'src/ldap-auth/decorators/scope-protected.decorator';
+import { ValidScopes } from 'src/ldap-auth/interfaces/valid-scopes';
 @ApiTags('persons')
 @Controller('persons')
 export class PersonsController {
@@ -34,8 +35,9 @@ export class PersonsController {
   ) {}
 
   @ApiBearerAuth('access-token')
-  @UseGuards( UserPermissionGuard )
-  @PermissionProtected("persons", "persons:view-fingerprint-list")
+  // @UseGuards(UserPermissionGuard)
+  // @PermissionProtected('persons', 'persons:view-fingerprint-list')
+  @ScopeProtected('persons:view-fingerprint-list')
   @Get('showListFingerprint')
   @ApiResponse({
     status: 200,
@@ -46,8 +48,7 @@ export class PersonsController {
   }
 
   @ApiBearerAuth('access-token')
-  @UseGuards( UserPermissionGuard )
-  @PermissionProtected("persons", "persons:view")
+  @UseGuards(ValidTokenGuard) // @UseGuards( UserPermissionGuard ) // @PermissionProtected("persons", "persons:view")
   @Get()
   @ApiResponse({ status: 200, description: 'Mostrar todas las personas' })
   findAllPersons(@Query() filterDto: FilteredPaginationDto) {
@@ -55,8 +56,9 @@ export class PersonsController {
   }
 
   @ApiBearerAuth('access-token')
-  @UseGuards( UserPermissionGuard )// @UseGuards(AuthGuard, RoleGuard)
-  @PermissionProtected("persons", "persons:view-single")// @Roles({ roles: ['rol1'] })
+  // @UseGuards(UserPermissionGuard)                           // @UseGuards(AuthGuard, RoleGuard)
+  // @PermissionProtected('persons', 'persons:view-single')    // @Roles({ roles: ['rol1'] })
+  @ScopeProtected(ValidScopes.persons.viewSingle)
   @Get(':term')
   @ApiResponse({ status: 200, description: 'Mostrar una persona' })
   async findOnePersons(@Param('term') term: string) {
@@ -64,8 +66,8 @@ export class PersonsController {
   }
 
   @ApiBearerAuth('access-token')
-  @UseGuards( UserPermissionGuard )
-  @PermissionProtected("persons", "persons:create")
+  @UseGuards(UserPermissionGuard)
+  @PermissionProtected('persons', 'persons:create')
   @Post()
   @ApiResponse({ status: 200, description: 'Añadir una persona' })
   createProduct(@Body() createPersonDto: CreatePersonDto) {
@@ -73,8 +75,8 @@ export class PersonsController {
   }
 
   @ApiBearerAuth('access-token')
-  @UseGuards( UserPermissionGuard )
-  @PermissionProtected("persons","persons:edit")
+  @UseGuards(UserPermissionGuard)
+  @PermissionProtected('persons', 'persons:edit')
   @Patch(':id')
   @ApiResponse({ status: 200, description: 'Editar una persona' })
   patchProduct(@Param('id', ParseIntPipe) id: number, @Body() updatePersonDto: UpdatePersonDto) {
@@ -85,8 +87,8 @@ export class PersonsController {
   }
 
   @ApiBearerAuth('access-token')
-  @UseGuards( UserPermissionGuard )
-  @PermissionProtected("persons","persons:delete")
+  @UseGuards(UserPermissionGuard)
+  @PermissionProtected('persons', 'persons:delete')
   @Delete(':id')
   @ApiResponse({ status: 200, description: 'Eliminar una persona' })
   deleteProduct(@Param('id') id: string) {
@@ -94,8 +96,8 @@ export class PersonsController {
   }
 
   @ApiBearerAuth('access-token')
-  @UseGuards( UserPermissionGuard )
-  @PermissionProtected("persons", "persons:view-details")
+  @UseGuards(UserPermissionGuard)
+  @PermissionProtected('persons', 'persons:view-details')
   @Get(':uuid/details')
   @ApiResponse({
     status: 200,
@@ -106,8 +108,8 @@ export class PersonsController {
   }
 
   @ApiBearerAuth('access-token')
-  @UseGuards( UserPermissionGuard )
-  @PermissionProtected("persons", "persons:view-beneficiaries")
+  @UseGuards(UserPermissionGuard)
+  @PermissionProtected('persons', 'persons:view-beneficiaries')
   @Get(':personId/beneficiaries')
   @ApiResponse({
     status: 200,
@@ -122,8 +124,8 @@ export class PersonsController {
   }
 
   @ApiBearerAuth('access-token')
-  @UseGuards( UserPermissionGuard )
-  @PermissionProtected("persons", "persons:view-affiliates")
+  @UseGuards(UserPermissionGuard)
+  @PermissionProtected('persons', 'persons:view-affiliates')
   @Get(':personId/affiliates')
   @ApiResponse({
     status: 200,
@@ -134,8 +136,8 @@ export class PersonsController {
   }
 
   @ApiBearerAuth('access-token')
-  @UseGuards( UserPermissionGuard )
-  @PermissionProtected("persons", "persons:create-fingerprint")
+  @UseGuards(UserPermissionGuard)
+  @PermissionProtected('persons', 'persons:create-fingerprint')
   @Post('createPersonFingerprint')
   @ApiBody({ type: CreatePersonFingerprintDto }) // Esto especifica que el cuerpo de la solicitud debe ser del tipo CreatePersonFingerprintDto
   @ApiResponse({
@@ -174,8 +176,8 @@ export class PersonsController {
   }
 
   @ApiBearerAuth('access-token')
-  @UseGuards( UserPermissionGuard )
-  @PermissionProtected("persons", "persons:view-fingerprint")
+  @UseGuards(UserPermissionGuard)
+  @PermissionProtected('persons', 'persons:view-fingerprint')
   @Get('showPersonFingerprint/:id')
   @ApiResponse({
     status: 200,

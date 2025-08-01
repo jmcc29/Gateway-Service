@@ -8,7 +8,11 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { NatsService } from 'src/common';
-import { META_PERMISSION, PermissionMetadata, PermissionProtected } from 'src/ldap-auth/decorators/permission.decorator';
+import {
+  META_PERMISSION,
+  PermissionMetadata,
+  PermissionProtected,
+} from 'src/ldap-auth/decorators/permission-protected.decorator';
 
 @Injectable()
 export class UserPermissionGuard implements CanActivate {
@@ -48,7 +52,6 @@ export class UserPermissionGuard implements CanActivate {
 
       return true;
     } catch (err) {
-      console.error('Error al evaluar permisos:', err);
       throw new ForbiddenException(err.message);
     }
   }

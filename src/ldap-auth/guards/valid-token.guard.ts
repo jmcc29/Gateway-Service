@@ -12,10 +12,10 @@ export class ValidTokenGuard implements CanActivate {
       throw new UnauthorizedException('Token no enviado');
     }
 
-    const token = auth.split(' ')[1];
+    const accessToken = auth.split(' ')[1];
 
     try {
-      const result = await this.nats.firstValue('ldap-auth.validateToken', { token });
+      const result = await this.nats.firstValue('ldap-auth.validateToken', { accessToken });
 
       if (!result?.isValid) {
         throw new UnauthorizedException('Token inválido');
