@@ -1,17 +1,11 @@
-import { applyDecorators, UseGuards } from '@nestjs/common';
-import { PermissionProtected } from './permission-protected.decorator';
+import { applyDecorators, SetMetadata, UseGuards } from '@nestjs/common';
 import { UserPermissionGuard } from '../guards/user-permission.guard';
 
-export function ScopeProtected(scope: string) {
-  return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
-    const controllerName = target.constructor.name; // ej: PersonsController
-    const resource = controllerName.replace('Controller', '').toLowerCase(); // persons
+export const SCOPE_KEY = 'scope_key';
 
-    const decorators = applyDecorators(
-      UseGuards(UserPermissionGuard),
-      PermissionProtected(resource, scope),
-    );
-
-    decorators(target, propertyKey, descriptor);
-  };
+export function Scope(scope: string) {
+  return applyDecorators(
+    SetMetadata(SCOPE_KEY, scope),
+    UseGuards(UserPermissionGuard),
+  );
 }

@@ -1,18 +1,15 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Observable } from 'rxjs';
 import { NatsService } from 'src/common';
-import {
-  META_PERMISSION,
-  PermissionMetadata,
-  PermissionProtected,
-} from 'src/ldap-auth/decorators/permission-protected.decorator';
+import { META_PERMISSION, PermissionMetadata } from '../decorators/permission-protected.decorator';
+import { RESOURCE_KEY } from '../decorators/resource.decorator';
+import { SCOPE_KEY } from '../decorators/scope-protected.decorator';
 
 @Injectable()
 export class UserPermissionGuard implements CanActivate {
@@ -20,39 +17,44 @@ export class UserPermissionGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly nats: NatsService,
   ) {}
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
-
     const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+
     if (!token) {
       throw new UnauthorizedException('Token de acceso no encontrado');
     }
 
-    const permission: PermissionMetadata = this.reflector.get<PermissionMetadata>(
+    // 1. Buscar primero en @PermissionProtected()
+    let permission: PermissionMetadata = this.reflector.get<PermissionMetadata>(
       META_PERMISSION,
       context.getHandler(),
     );
 
-    if (!permission) {
-      throw new ForbiddenException('Permiso no definido en la ruta');
+    let resource = permission?.resource;
+    let scope = permission?.scope;
+
+    // 2. Si no está definido, buscar en @Resource y @ScopeProtected
+    if (!resource || !scope) {
+      resource = this.reflector.get<string>(RESOURCE_KEY, context.getClass());
+      scope = this.reflector.get<string>(SCOPE_KEY, context.getHandler());
     }
 
-    const { resource, scope } = permission;
-
-    try {
-      const hasPermission = await this.nats.firstValue('ldap-auth.evaluatePermission', {
-        accessToken: token,
-        resource,
-        scope,
-      });
-
-      if (!hasPermission) {
-        throw new ForbiddenException(`No autorizado para ${scope} en ${resource}`);
-      }
-
-      return true;
-    } catch (err) {
-      throw new ForbiddenException(err.message);
+    if (!resource || !scope) {
+      throw new ForbiddenException('Faltan metadatos de autorización (resource o scope)');
     }
+
+    const hasPermission = await this.nats.firstValue('ldap-auth.evaluatePermission', {
+      accessToken: token,
+      resource,
+      scope,
+    });
+
+    if (!hasPermission) {
+      throw new ForbiddenException(`No autorizado para ${scope} en ${resource}`);
+    }
+
+    return true;
   }
 }
