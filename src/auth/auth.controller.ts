@@ -10,7 +10,7 @@ import { Redirect } from '@nestjs/common';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
-  
+
   @Get('login')
   @Redirect() // Nest gestionará el 302 usando lo que retornes
   async login(
@@ -30,7 +30,7 @@ export class AuthController {
     console.log('Redirigiendo a:', returnTo ?? url);
 
     // Nest hará el redirect según este objeto (una sola "respuesta")
-    return { url: returnTo ?? url, statusCode: 302 };
+    return { url, statusCode: 302 };
   }
 
   @Get('callback')
@@ -43,11 +43,12 @@ export class AuthController {
     if (!code || !state) {
       throw new BadRequestException('Faltan parámetros code/state');
     }
+
     const cookieState = (req as any).cookies?.oauth_state;
-    console.log('Estado de cookie:', cookieState, 'Estado de query:', state);
     if (!cookieState || cookieState !== state) {
       throw new BadRequestException('State inválido o ausente');
     }
+
     const { sessionId, returnTo } = await this.authService.exchangeCodeAndCreateSession({
       code,
       state,
@@ -62,7 +63,13 @@ export class AuthController {
     });
 
     res.clearCookie('oauth_state');
-    return res.redirect('http://localhost:3002/persons');
-    // return returnTo ? res.redirect(returnTo) : res.json({ ok: true, sessionId });
+
+    // 🔹 Redirigir siempre de forma consistente
+    if (!returnTo) {
+      throw new BadRequestException(
+        'Ocurrió un error al redirigir. No se encontró returnTo.',
+      );
+    }
+    return res.redirect(returnTo);
   }
 }
