@@ -1,78 +1,67 @@
-import { Body, Controller, Get, Logger, Post, Res } from '@nestjs/common';
-import { CreateUserDto, LoginUserDto } from './dto';
-import { Response } from 'express';
-import { NatsService, RecordService } from 'src/common';
-import { CurrentUser } from './interfaces/current-user.interface';
-import { ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Controller, Post, Body, Query, Get, Res, Req, BadRequestException} from '@nestjs/common';
+import { Response, Request } from 'express';
 import { AuthService } from './auth.service';
-@ApiTags('Auth')
+import { LoginLdapUserDto } from './dto';
+import { ApiTags, ApiResponse } from '@nestjs/swagger';
+import { EvaluatePermissionDto } from './dto/evaluate-permission.dto';
+
+@ApiTags('Auth LDAP')
 @Controller('auth')
 export class AuthController {
-  private readonly logger = new Logger('AuthController');
-  constructor(
-    private readonly nats: NatsService,
-    private readonly recordService: RecordService,
-    private readonly authService: AuthService,
-  ) {}
+  constructor(private readonly authService: AuthService) {}
 
-  // @Post('login')
-  // async loginUser(@Body() loginUserDto: LoginUserDto, @Res({ passthrough: true }) res: Response) {
-  //   this.logger.log({ username: loginUserDto.username });
-  //   try {
-  //     const data: CurrentUser = await this.nats.firstValue('auth.login', loginUserDto);
-  //     const timeShort = 4; // 4 horas
-  //     const oneHourMiliseconds = 3600000;
-  //     this.logger.log('Login successful');
-  //     if (data.user.username != 'pvtbe') {
-  //       this.recordService.http('Inicio de sesion exitosa', data.user.username, 1, 1, 'User');
-  //     }
-  //     res
-  //       .cookie('msp', data.access_token, {
-  //         path: '/',
-  //         httpOnly: true,
-  //         sameSite: 'strict',
-  //         expires: new Date(Date.now() + timeShort * oneHourMiliseconds),
-  //       })
-  //       .status(200)
-  //       .json({
-  //         message: 'Login successful',
-  //         user: data.user,
-  //       });
-  //   } catch (error) {
-  //     this.logger.error(error);
-  //     res.status(401).json({
-  //       error: true,
-  //       message: error.message,
-  //     });
-  //   }
-  // }
+  @Get('login')
+  async login(
+    @Res() res: Response,
+    @Query('returnTo') returnTo: string, //opcional: a donde volver 
+  ) {
+    const {url, state} = await this.authService.buildAuthUrl({ returnTo });
+    //cookie de estado (defensa adicional)
+    res.cookie('oauth_state', state, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: true,
+      maxAge: 8 * 60 * 60 * 1000, //8h
+      path: '/',
+    });
+    console.log('Redirigiendo a: ', url);
+    //Para pruebas: puedes redirigir al frontend o devolver JSON
+    if(!returnTo){
+      res.redirect(url);
+    }
+    // Devuelve tokens solo para debug. En prod evitar enviarlos al navegador
+    
+    return returnTo ? res.redirect(returnTo) : res.json({ ok: true });
+  } 
 
-  // @Get('logout')
-  // async logout(@Res() res: Response): Promise<void> {
-  //   res.clearCookie('msp', {
-  //     path: '/',
-  //     httpOnly: true,
-  //     sameSite: 'strict',
-  //   });
-  //   res.status(200).json({
-  //     message: 'Logout successful',
-  //   });
-  // }
-  @Post('login')
-  @ApiResponse({
-    status: 200,
-    description: 'Emitir token para exchange con Keycloak, para acceso a usuarios externos',
-  })
-  async login(@Body() dto: LoginUserDto) {
-    return this.authService.loginKeycloak(dto);
-  }
-  @Post('register')
-  async register(@Body() dto: CreateUserDto) {
-    return this.authService.register(dto);
-  }
+  @Get('callback')
+  async callback(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query('code') code?: string,
+    @Query('state') state?: string,
+  ) {
+    if (!code || !state) {
+      throw new BadRequestException('Faltan parámetros code/state');
+    }
+    const cookieState = (req as any).cookies?.oauth_state;
+    console.log('Estado de cookie:', cookieState, 'Estado de query:', state);
+    if (!cookieState || cookieState !== state) {
+      throw new BadRequestException('State inválido o ausente');
+    }
+    const { sessionId, returnTo } =
+      await this.authService.exchangeCodeAndCreateSession({ code, state });
 
-  @Post('identify')
-  async identify(@Body() dto: LoginUserDto) {
-    return this.authService.identify(dto);
+    res.cookie('sid', sessionId, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: true,
+      maxAge: 8 * 60 * 60 * 1000,
+      path: '/',
+    });
+
+    res.clearCookie('oauth_state');
+    return res.redirect('http://localhost:3002/persons');
+    // return returnTo ? res.redirect(returnTo) : res.json({ ok: true, sessionId });
   }
 }

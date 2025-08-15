@@ -21,9 +21,9 @@ import {
 import { ApiTags, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { NatsService, RecordService } from 'src/common';
 // import { AuthGuard, RoleGuard, Roles} from 'nest-keycloak-connect';
-import { ValidTokenGuard, UserPermissionGuard } from 'src/ldap-auth/guards';
-import { PermissionProtected, Resource, Scope } from 'src/ldap-auth/decorators';
-import { ValidScopes } from 'src/ldap-auth/interfaces/valid-scopes';
+import { ValidTokenGuard, UserPermissionGuard } from 'src/auth/guards';
+import { PermissionProtected, Resource, Scope } from 'src/auth/decorators';
+import { ValidScopes } from 'src/auth/interfaces/valid-scopes';
 
 @ApiTags('persons')
 @ApiBearerAuth('access-token')

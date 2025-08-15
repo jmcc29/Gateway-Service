@@ -21,7 +21,7 @@ import {
 } from '@nestjs/swagger';
 import { FileRequiredPipe, NatsService, RecordService } from 'src/common';
 import { Response } from 'express';
-import { AuthGuard } from 'src/auth/guards/auth.guard';
+import { ValidTokenGuard } from 'src/auth/guards';
 @ApiTags('affiliates')
 @Controller('affiliates')
 export class AffiliatesController {
@@ -67,7 +67,7 @@ export class AffiliatesController {
       },
     },
   })
-  @UseGuards(AuthGuard)
+  @UseGuards(ValidTokenGuard)
   @UseInterceptors(FileInterceptor('documentPdf'))
   async createOrUpdateDocument(
     @Req() req: any,
@@ -115,7 +115,7 @@ export class AffiliatesController {
     res.send(Buffer.from(documentPdf, 'base64'));
   }
 
-  @UseGuards(AuthGuard)
+  @UseGuards(ValidTokenGuard)
   @Get(':affiliateId/modality/:modalityId/collate')
   @ApiResponse({
     status: 200,

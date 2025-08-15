@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { PersonsController } from './persons.controller';
-import { LdapAuthModule } from 'src/ldap-auth/ldap-auth.module';
+import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
   controllers: [PersonsController],
   providers: [],
-  imports: [LdapAuthModule],
+  imports: [AuthModule],
 })
 export class PersonsModule {}

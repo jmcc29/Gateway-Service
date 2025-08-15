@@ -7,11 +7,10 @@ import { KioskModule } from './kiosk/kiosk.module';
 import { CommonModule } from './common/common.module';
 import { DatabaseModule } from './database/database.module';
 import { PracticeModule } from './practice/practice.module';
-import { LdapAuthModule } from './ldap-auth/ldap-auth.module';
 
 @Module({
   imports: [
-    // AuthModule,
+    AuthModule,
     PersonsModule,
     GeneralModule,
     AffiliatesModule,
@@ -19,7 +18,6 @@ import { LdapAuthModule } from './ldap-auth/ldap-auth.module';
     CommonModule,
     DatabaseModule,
     PracticeModule,
-    LdapAuthModule,
   ],
 })
 export class AppModule {}

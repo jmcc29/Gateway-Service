@@ -15,7 +15,7 @@ import { ApiBody, ApiConsumes, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { firstValueFrom } from 'rxjs';
 import { PvtEnvs } from 'src/config';
 import { HttpService } from '@nestjs/axios';
-import { HashPvtGuard } from 'src/auth/guards/hashpvt.guard';
+// import { HashPvtGuard } from 'src/auth/guards/hashpvt.guard';
 import { Response } from 'express';
 import { SaveDataKioskAuthDto } from './dto/save-data-kiosk-auth.dto';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
@@ -81,7 +81,7 @@ export class KioskController {
     return this.nats.send('kiosk.getFingerprintComparison', id);
   }
 
-  @UseGuards(HashPvtGuard)
+//  @UseGuards(HashPvtGuard)
   @Get('person/:identityCard/ecoCom')
   @ApiResponse({
     status: 200,
@@ -103,7 +103,7 @@ export class KioskController {
     }
   }
 
-  @UseGuards(HashPvtGuard)
+  // @UseGuards(HashPvtGuard)
   @Get('ecoCom/:id')
   async GetEcoComKiosko(
     @Headers('authorization') authorization: string,
@@ -121,7 +121,7 @@ export class KioskController {
     }
   }
 
-  @UseGuards(HashPvtGuard)
+  // @UseGuards(HashPvtGuard)
   @Post('ecoCom')
   async CreateEcoComKiosko(
     @Headers('authorization') authorization: string,
