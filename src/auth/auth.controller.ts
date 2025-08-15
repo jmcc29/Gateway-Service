@@ -1,38 +1,37 @@
-import { Controller, Post, Body, Query, Get, Res, Req, BadRequestException} from '@nestjs/common';
+import { Controller, Post, Body, Query, Get, Res, Req, BadRequestException } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginLdapUserDto } from './dto';
 import { ApiTags, ApiResponse } from '@nestjs/swagger';
 import { EvaluatePermissionDto } from './dto/evaluate-permission.dto';
+import { Redirect } from '@nestjs/common';
 
 @ApiTags('Auth LDAP')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
-
+  
   @Get('login')
+  @Redirect() // Nest gestionará el 302 usando lo que retornes
   async login(
-    @Res() res: Response,
-    @Query('returnTo') returnTo: string, //opcional: a donde volver 
+    @Res({ passthrough: true }) res: Response, // solo para setear cookies
+    @Query('returnTo') returnTo?: string,
   ) {
-    const {url, state} = await this.authService.buildAuthUrl({ returnTo });
-    //cookie de estado (defensa adicional)
+    const { url, state } = await this.authService.buildAuthUrl({ returnTo });
+
     res.cookie('oauth_state', state, {
       httpOnly: true,
       sameSite: 'lax',
       secure: true,
-      maxAge: 8 * 60 * 60 * 1000, //8h
+      maxAge: 8 * 60 * 60 * 1000,
       path: '/',
     });
-    console.log('Redirigiendo a: ', url);
-    //Para pruebas: puedes redirigir al frontend o devolver JSON
-    if(!returnTo){
-      res.redirect(url);
-    }
-    // Devuelve tokens solo para debug. En prod evitar enviarlos al navegador
-    
-    return returnTo ? res.redirect(returnTo) : res.json({ ok: true });
-  } 
+
+    console.log('Redirigiendo a:', returnTo ?? url);
+
+    // Nest hará el redirect según este objeto (una sola "respuesta")
+    return { url: returnTo ?? url, statusCode: 302 };
+  }
 
   @Get('callback')
   async callback(
@@ -49,8 +48,10 @@ export class AuthController {
     if (!cookieState || cookieState !== state) {
       throw new BadRequestException('State inválido o ausente');
     }
-    const { sessionId, returnTo } =
-      await this.authService.exchangeCodeAndCreateSession({ code, state });
+    const { sessionId, returnTo } = await this.authService.exchangeCodeAndCreateSession({
+      code,
+      state,
+    });
 
     res.cookie('sid', sessionId, {
       httpOnly: true,

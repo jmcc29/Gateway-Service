@@ -2,13 +2,13 @@ import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import * as crypto from 'crypto';
 import { URLSearchParams } from 'url';
-import { KeycloakEnvs } from 'src/config';
+import { KeycloakEnvs, PortEnvs } from 'src/config';
 
 const base=KeycloakEnvs.authServerUrl
 const realm=KeycloakEnvs.realm
 const clientId=KeycloakEnvs.clientId
 const clientSecret=KeycloakEnvs.secret
-const redirectUri=`http://localhost:3000/api/auth/callback`
+const redirectUri=`http://localhost:${PortEnvs.port}/api/auth/callback`
 const oidcScope='openid profile email'
 
 type PendingAuth = {
