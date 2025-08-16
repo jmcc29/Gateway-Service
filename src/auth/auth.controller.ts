@@ -1,8 +1,18 @@
-import { Controller, Post, Body, Query, Get, Res, Req, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Query,
+  Get,
+  Res,
+  Req,
+  BadRequestException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Response, Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginLdapUserDto } from './dto';
-import { ApiTags, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { EvaluatePermissionDto } from './dto/evaluate-permission.dto';
 import { Redirect } from '@nestjs/common';
 
@@ -43,6 +53,7 @@ export class AuthController {
     if (!code || !state) {
       throw new BadRequestException('Faltan parámetros code/state');
     }
+    console.log('Callback recibido con:', { code, state });
 
     const cookieState = (req as any).cookies?.oauth_state;
     if (!cookieState || cookieState !== state) {
@@ -66,10 +77,24 @@ export class AuthController {
 
     // 🔹 Redirigir siempre de forma consistente
     if (!returnTo) {
-      throw new BadRequestException(
-        'Ocurrió un error al redirigir. No se encontró returnTo.',
-      );
+      throw new BadRequestException('Ocurrió un error al redirigir. No se encontró returnTo.');
     }
     return res.redirect(returnTo);
+  }
+
+  @Get('session')
+  @ApiQuery({ name: 'sid', required: false, description: 'ID de sesión (opcional si hay cookie)' })
+  getSession(@Req() req: Request, @Query('sid') sidFromQuery?: string) {
+    const sid = sidFromQuery ?? (req as any).cookies?.sid;
+
+    if (!sid) {
+      throw new UnauthorizedException('No se proporcionó sid ni se encontró en la cookie');
+    }
+
+    try {
+      return this.authService.getSessionData(sid);
+    } catch (err) {
+      throw new UnauthorizedException(err.message);
+    }
   }
 }

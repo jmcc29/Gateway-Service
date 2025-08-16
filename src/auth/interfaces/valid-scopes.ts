@@ -3,15 +3,13 @@ export const ValidScopes = {
   create: 'create',
   edit: 'edit',
   delete: 'delete',
-
+  viewBeneficiaries: 'view-beneficiaries',
+  viewAffiliates: 'view-affiliates',
+  viewFingerprint: 'view-fingerprint',
+  
   persons: {
-    showListFingerprint: 'persons:view-fingerprint-list',
-    //view: 'persons:view',
-    //viewSingle: 'persons:view-single',
-    viewDetails: 'persons:viewDetails',
-    viewBeneficiaries: 'persons:view-beneficiaries',
-    viewAffiliates: 'persons:view-affiliates',
-    createPersonFingerprint: 'persons:create-fingerprint',
-    viewFingerprint: 'persons:view-fingerprint',
+    viewBeneficiaries: 'view-beneficiaries',
+    viewAffiliates: 'view-affiliates',
+    viewFingerprint: 'view-fingerprint',
   },
 };

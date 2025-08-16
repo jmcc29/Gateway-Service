@@ -21,8 +21,7 @@ import {
 import { ApiTags, ApiResponse, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
 import { NatsService, RecordService } from 'src/common';
 // import { AuthGuard, RoleGuard, Roles} from 'nest-keycloak-connect';
-import { ValidTokenGuard, UserPermissionGuard } from 'src/auth/guards';
-import { PermissionProtected, Resource, Scope } from 'src/auth/decorators';
+import { Resource, Scope } from 'src/auth/decorators';
 import { ValidScopes } from 'src/auth/interfaces/valid-scopes';
 
 @ApiTags('persons')
@@ -35,7 +34,7 @@ export class PersonsController {
     private readonly recordService: RecordService,
   ) {}
 
-  @Scope(ValidScopes.view)
+  @Scope(ValidScopes.viewFingerprint)
   @Get('showListFingerprint')
   @ApiResponse({
     status: 200,
@@ -45,15 +44,15 @@ export class PersonsController {
     return this.nats.send('person.showListFingerprint', {});
   }
 
-  @Scope('view')
+  @Scope(ValidScopes.view)
   @Get()
   @ApiResponse({ status: 200, description: 'Mostrar todas las personas' })
   findAllPersons(@Query() filterDto: FilteredPaginationDto) {
     return this.nats.send('person.findAll', filterDto);
   }
 
-  // @UseGuards(UserPermissionGuard)                           // @UseGuards(RoleGuard)
-  // @PermissionProtected('persons', 'persons:view-single')    // @Roles({ roles: ['rol1'] })
+  // @UseGuards(UserPermissionGuard)            // @UseGuards(RoleGuard)
+  // @PermissionProtected('persons', 'view')    // @Roles({ roles: ['rol1'] })
   @Scope(ValidScopes.view)
   @Get(':term')
   @ApiResponse({ status: 200, description: 'Mostrar una persona' })
@@ -157,7 +156,7 @@ export class PersonsController {
     return result;
   }
 
-  @Scope(ValidScopes.persons.viewFingerprint)
+  @Scope(ValidScopes.viewFingerprint)
   @Get('showPersonFingerprint/:id')
   @ApiResponse({
     status: 200,

@@ -202,4 +202,18 @@ export class AuthService {
       return undefined;
     }
   }
+
+  getSessionData(sessionId: string) {
+  const session = sessions.get(sessionId);
+  if (!session) {
+    throw new Error('Sesión inválida o expirada');
+  }
+
+  return {
+    accessToken: session.accessToken,
+    expiresIn: session.expiresIn,
+    sub: session.sub,
+    roles: session.roles,
+  };
+}
 }
