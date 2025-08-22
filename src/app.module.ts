@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AffiliatesModule } from './affiliates/affiliates.module';
 import { AuthModule } from './auth/auth.module';
 import { GeneralModule } from './general/general.module';
@@ -7,6 +7,7 @@ import { KioskModule } from './kiosk/kiosk.module';
 import { CommonModule } from './common/common.module';
 import { DatabaseModule } from './database/database.module';
 import { PracticeModule } from './practice/practice.module';
+import { TokenFromSidMiddleware } from './auth/middlewares/token.middleware';
 
 @Module({
   imports: [
@@ -20,4 +21,8 @@ import { PracticeModule } from './practice/practice.module';
     PracticeModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule{
+  configure(consumer: MiddlewareConsumer) {
+      consumer.apply(TokenFromSidMiddleware).forRoutes('persons');
+    }
+}

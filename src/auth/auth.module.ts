@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { NatsService } from 'src/common';
@@ -22,6 +22,6 @@ import { KeycloakEnvs } from 'src/config';
   ],
   controllers: [AuthController],
   providers: [AuthService, NatsService],
-  exports: [],
+  exports: [AuthService],
 })
 export class AuthModule {}
