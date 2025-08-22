@@ -3,7 +3,8 @@ import * as joi from 'joi';
 
 interface EnvVars {
   PORT: number;
-
+  HOST: string;
+  
   NATS_SERVERS: string[];
 
   FRONTENDS_SERVERS: string[];
@@ -65,7 +66,8 @@ if (error) {
 
 const envVars: EnvVars = value;
 
-export const PortEnvs = {
+export const GatewayEnvs = {
+  host: envVars.HOST,
   port: envVars.PORT,
 };
 

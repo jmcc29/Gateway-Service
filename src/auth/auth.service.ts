@@ -2,30 +2,30 @@ import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import * as crypto from 'crypto';
 import { URLSearchParams } from 'url';
-import { KeycloakEnvs, PortEnvs } from 'src/config';
+import { KeycloakEnvs, GatewayEnvs } from 'src/config';
 
-const base=KeycloakEnvs.authServerUrl
-const realm=KeycloakEnvs.realm
-const clientId=KeycloakEnvs.clientId
-const clientSecret=KeycloakEnvs.secret
-const redirectUri=`http://localhost:${PortEnvs.port}/api/auth/callback`
-const oidcScope='openid profile email'
+const base = KeycloakEnvs.authServerUrl;
+const realm = KeycloakEnvs.realm;
+const clientId = KeycloakEnvs.clientId;
+const clientSecret = KeycloakEnvs.secret;
+const redirectUri = `http://${GatewayEnvs.host}:${GatewayEnvs.port}/api/auth/callback`;
+const oidcScope = 'openid profile email';
 
 type PendingAuth = {
-    codeVerifier: string;
-    createdAt: number;
-    returnTo: string;
-}
+  codeVerifier: string;
+  createdAt: number;
+  returnTo: string;
+};
 
 type SessionData = {
-    accessToken: string;
-    refreshToken: string;
-    idToken: string;
-    expiresIn: number;
-    tokenType: string;
-    sub?: string;
-    roles?: string[];
-}
+  accessToken: string;
+  refreshToken: string;
+  idToken: string;
+  expiresIn: number;
+  tokenType: string;
+  sub?: string;
+  roles?: string[];
+};
 
 //Almacenamineto en memorio (cambiar por Redis en prod)
 const pending = new Map<string, PendingAuth>();
@@ -33,7 +33,7 @@ const sessions = new Map<string, SessionData>();
 
 @Injectable()
 export class AuthService {
-    // 1) Construye URL de autorización y guarda PKCE + state
+  // 1) Construye URL de autorización y guarda PKCE + state
   async buildAuthUrl(opts?: { returnTo?: string }) {
     const state = this.randomId();
     const { verifier, challenge } = this.generatePkce();
@@ -105,15 +105,11 @@ export class AuthService {
   // ========== Helpers OIDC ==========
 
   private authorizeEndpoint() {
-    return `${base}/realms/${encodeURIComponent(
-      realm,
-    )}/protocol/openid-connect/auth`;
+    return `${base}/realms/${encodeURIComponent(realm)}/protocol/openid-connect/auth`;
   }
 
   private tokenEndpoint() {
-    return `${base}/realms/${encodeURIComponent(
-      realm,
-    )}/protocol/openid-connect/token`;
+    return `${base}/realms/${encodeURIComponent(realm)}/protocol/openid-connect/token`;
   }
 
   private async tokenRequest(opts: { code: string; codeVerifier: string }) {
@@ -146,18 +142,12 @@ export class AuthService {
 
   private generatePkce() {
     const verifier = this.base64url(crypto.randomBytes(32)); // 43-128 chars
-    const challenge = this.base64url(
-      crypto.createHash('sha256').update(verifier).digest(),
-    );
+    const challenge = this.base64url(crypto.createHash('sha256').update(verifier).digest());
     return { verifier, challenge };
   }
 
   private base64url(buf: Buffer) {
-    return buf
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/g, '');
+    return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
   }
 
   // ========== Misc utils ==========
@@ -195,8 +185,7 @@ export class AuthService {
       // Realm roles: json.realm_access.roles
       // Client roles: json.resource_access[CLIENT_ID].roles
       const realmRoles: string[] = json?.realm_access?.roles ?? [];
-      const clientRoles: string[] =
-        json?.resource_access?.[clientId]?.roles ?? [];
+      const clientRoles: string[] = json?.resource_access?.[clientId]?.roles ?? [];
       return [...new Set([...realmRoles, ...clientRoles])];
     } catch {
       return undefined;
@@ -204,16 +193,16 @@ export class AuthService {
   }
 
   getSessionData(sessionId: string) {
-  const session = sessions.get(sessionId);
-  if (!session) {
-    throw new Error('Sesión inválida o expirada');
-  }
+    const session = sessions.get(sessionId);
+    if (!session) {
+      throw new Error('Sesión inválida o expirada');
+    }
 
-  return {
-    accessToken: session.accessToken,
-    expiresIn: session.expiresIn,
-    sub: session.sub,
-    roles: session.roles,
-  };
-}
+    return {
+      accessToken: session.accessToken,
+      expiresIn: session.expiresIn,
+      sub: session.sub,
+      roles: session.roles,
+    };
+  }
 }

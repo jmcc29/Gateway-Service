@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { FrontEnvs, PortEnvs } from './config';
+import { FrontEnvs, GatewayEnvs } from './config';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as cookieParser from 'cookie-parser';
@@ -24,10 +24,8 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
-  // app.useGlobalGuards(app.get(AuthGuard)); // Register the AuthGuard globally
   app.use(cookieParser());
-  logger.log(`Gateway running on port ${PortEnvs.port}`);
-
+  logger.log(`Gateway running on: http://${GatewayEnvs.host}:${GatewayEnvs.port}`);
   //Configuración swagger (Documentación de las APIS)
   const config = new DocumentBuilder()
     .setTitle('APIS DOCUMENTATION')
@@ -47,6 +45,6 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 
-  await app.listen(PortEnvs.port);
+  await app.listen(GatewayEnvs.port);
 }
 bootstrap();
