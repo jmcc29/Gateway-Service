@@ -32,7 +32,7 @@ export class AuthController {
     res.cookie('oauth_state', state, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: true,
+      secure: false,
       maxAge: 8 * 60 * 60 * 1000,
       path: '/',
     });
@@ -53,9 +53,10 @@ export class AuthController {
     if (!code || !state) {
       throw new BadRequestException('Faltan parámetros code/state');
     }
-    console.log('Callback recibido con:', { code, state });
+    //console.log('Callback recibido con:', { code, state });
 
     const cookieState = (req as any).cookies?.oauth_state;
+    //console.log('Cookie oauth_state:', cookieState);
     if (!cookieState || cookieState !== state) {
       throw new BadRequestException('State inválido o ausente');
     }
@@ -68,7 +69,7 @@ export class AuthController {
     res.cookie('sid', sessionId, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: true,
+      secure: false,
       maxAge: 8 * 60 * 60 * 1000,
       path: '/',
     });

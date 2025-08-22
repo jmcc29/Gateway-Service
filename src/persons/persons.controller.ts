@@ -23,6 +23,7 @@ import { NatsService, RecordService } from 'src/common';
 // import { AuthGuard, RoleGuard, Roles} from 'nest-keycloak-connect';
 import { Resource, Scope } from 'src/auth/decorators';
 import { ValidScopes } from 'src/auth/interfaces/valid-scopes';
+import { ValidTokenGuard } from 'src/auth/guards';
 
 @ApiTags('persons')
 @ApiBearerAuth('access-token')
@@ -34,7 +35,7 @@ export class PersonsController {
     private readonly recordService: RecordService,
   ) {}
 
-  @Scope(ValidScopes.viewFingerprint)
+  //@Scope(ValidScopes.viewFingerprint)
   @Get('showListFingerprint')
   @ApiResponse({
     status: 200,
@@ -43,7 +44,7 @@ export class PersonsController {
   async showListFingerprint() {
     return this.nats.send('person.showListFingerprint', {});
   }
-
+  @UseGuards(ValidTokenGuard)
   @Scope(ValidScopes.view)
   @Get()
   @ApiResponse({ status: 200, description: 'Mostrar todas las personas' })
@@ -53,21 +54,21 @@ export class PersonsController {
 
   // @UseGuards(UserPermissionGuard)            // @UseGuards(RoleGuard)
   // @PermissionProtected('persons', 'view')    // @Roles({ roles: ['rol1'] })
-  @Scope(ValidScopes.view)
+  //@Scope(ValidScopes.view)
   @Get(':term')
   @ApiResponse({ status: 200, description: 'Mostrar una persona' })
   async findOnePersons(@Param('term') term: string) {
     return this.nats.send('person.findOne', { term, field: 'id' });
   }
 
-  @Scope(ValidScopes.create)
+  //@Scope(ValidScopes.create)
   @Post()
   @ApiResponse({ status: 200, description: 'Añadir una persona' })
   createProduct(@Body() createPersonDto: CreatePersonDto) {
     return this.nats.send('person.create', createPersonDto);
   }
 
-  @Scope(ValidScopes.edit)
+  //@Scope(ValidScopes.edit)
   @Patch(':id')
   @ApiResponse({ status: 200, description: 'Editar una persona' })
   patchProduct(@Param('id', ParseIntPipe) id: number, @Body() updatePersonDto: UpdatePersonDto) {
@@ -77,14 +78,14 @@ export class PersonsController {
     });
   }
 
-  @Scope(ValidScopes.delete)
+  //@Scope(ValidScopes.delete)
   @Delete(':id')
   @ApiResponse({ status: 200, description: 'Eliminar una persona' })
   deleteProduct(@Param('id') id: string) {
     return this.nats.send('person.delete', { id });
   }
 
-  @Scope(ValidScopes.view)
+  //@Scope(ValidScopes.view)
   @Get(':uuid/details')
   @ApiResponse({
     status: 200,
@@ -94,7 +95,7 @@ export class PersonsController {
     return this.nats.send('person.findOneWithFeatures', { uuid });
   }
 
-  @Scope(ValidScopes.view)
+  //@Scope(ValidScopes.view)
   @Get(':personId/beneficiaries')
   @ApiResponse({
     status: 200,
@@ -108,7 +109,7 @@ export class PersonsController {
     return this.nats.send('person.showPersonsRelatedToAffiliate', { id });
   }
 
-  @Scope(ValidScopes.view)
+  //@Scope(ValidScopes.view)
   @Get(':personId/affiliates')
   @ApiResponse({
     status: 200,
@@ -118,7 +119,7 @@ export class PersonsController {
     return this.nats.send('person.findAffiliates', { id });
   }
 
-  @Scope(ValidScopes.create)
+  //@Scope(ValidScopes.create)
   @Post('createPersonFingerprint')
   @ApiBody({ type: CreatePersonFingerprintDto }) // Esto especifica que el cuerpo de la solicitud debe ser del tipo CreatePersonFingerprintDto
   @ApiResponse({
@@ -156,7 +157,7 @@ export class PersonsController {
     return result;
   }
 
-  @Scope(ValidScopes.viewFingerprint)
+  //@Scope(ValidScopes.viewFingerprint)
   @Get('showPersonFingerprint/:id')
   @ApiResponse({
     status: 200,
