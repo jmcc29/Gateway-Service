@@ -2,19 +2,19 @@ import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import * as crypto from 'crypto';
 import { URLSearchParams } from 'url';
-import { KeycloakEnvs, GatewayEnvs } from 'src/config';
+import { KeycloakEnvs, GatewayEnvs , FrontEnvs} from 'src/config';
 
 const base = KeycloakEnvs.authServerUrl;
 const realm = KeycloakEnvs.realm;
 const clientId = KeycloakEnvs.clientId;
 const clientSecret = KeycloakEnvs.secret;
-const redirectUri = `http://${GatewayEnvs.host}:${GatewayEnvs.port}/api/auth/callback`;
 const oidcScope = 'openid profile email';
 
 type PendingAuth = {
   codeVerifier: string;
   createdAt: number;
   returnTo: string;
+  redirectUri?: string;
 };
 
 type SessionData = {
@@ -27,6 +27,28 @@ type SessionData = {
   roles?: string[];
 };
 
+// Helper: obtiene origin normalizado
+function originOf(urlStr: string): string {
+  const { origin } = new URL(urlStr);
+  return origin.replace(/\/+$/, '');
+}
+// Deriva y valida el redirectUri a partir del returnTo
+function deriveRedirectUri(returnTo?: string): string {
+  if (!returnTo) {
+    throw new Error('returnTo es obligatorio para derivar redirectUri');
+  }
+  let origin: string;
+  try {
+    origin = originOf(returnTo); // requiere returnTo absoluto
+  } catch {
+    throw new Error(`returnTo inválido: ${returnTo}`);
+  }
+  if (!FrontEnvs.frontendServers.includes(origin)) {
+    throw new Error(`Origen no permitido`);
+  }
+  return `${origin}/api/auth/callback`;
+}
+
 //Almacenamineto en memorio (cambiar por Redis en prod)
 const pending = new Map<string, PendingAuth>();
 const sessions = new Map<string, SessionData>();
@@ -38,10 +60,12 @@ export class AuthService {
     const state = this.randomId();
     const { verifier, challenge } = this.generatePkce();
 
+    const redirectUri = opts?.returnTo ? deriveRedirectUri(opts?.returnTo) : undefined;
     pending.set(state, {
       codeVerifier: verifier,
       createdAt: Date.now(),
       returnTo: opts?.returnTo,
+      redirectUri,
     });
 
     // Limpieza de expirados (simple)
@@ -60,7 +84,7 @@ export class AuthService {
 
     return { url, state };
   }
-
+  
   // 2) Intercambia code→tokens y crea sesión
   async exchangeCodeAndCreateSession(params: { code: string; state: string }) {
     const { code, state } = params;
@@ -73,6 +97,7 @@ export class AuthService {
     const tokenRes = await this.tokenRequest({
       code,
       codeVerifier: stash.codeVerifier,
+      redirectUri: stash.redirectUri,
     });
 
     const now = Date.now();
@@ -112,14 +137,14 @@ export class AuthService {
     return `${base}/realms/${encodeURIComponent(realm)}/protocol/openid-connect/token`;
   }
 
-  private async tokenRequest(opts: { code: string; codeVerifier: string }) {
+  private async tokenRequest(opts: { code: string; codeVerifier: string  ; redirectUri?: string }) {
     const body = new URLSearchParams();
     body.set('grant_type', 'authorization_code');
     body.set('client_id', clientId);
     if (clientSecret) body.set('client_secret', clientSecret);
     body.set('code', opts.code);
     body.set('code_verifier', opts.codeVerifier);
-    body.set('redirect_uri', redirectUri);
+    body.set('redirect_uri', opts.redirectUri);
 
     const { data } = await axios.post(this.tokenEndpoint(), body, {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },

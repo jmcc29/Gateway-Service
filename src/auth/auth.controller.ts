@@ -4,9 +4,7 @@ import {
   Body,
   Query,
   Get,
-  Res,
   Req,
-  BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Response, Request } from 'express';
@@ -23,64 +21,17 @@ export class AuthController {
 
   @Get('login')
   @Redirect() // Nest gestionará el 302 usando lo que retornes
-  async login(
-    @Res({ passthrough: true }) res: Response, // solo para setear cookies
-    @Query('returnTo') returnTo?: string,
-  ) {
-    const { url, state } = await this.authService.buildAuthUrl({ returnTo });
-
-    res.cookie('oauth_state', state, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
-      maxAge: 8 * 60 * 60 * 1000,
-      path: '/',
-    });
-
+  async login(@Query('returnTo') returnTo?: string ) {
+    const { url } = await this.authService.buildAuthUrl({ returnTo });
     console.log('Redirigiendo a:', returnTo ?? url);
-
     // Nest hará el redirect según este objeto (una sola "respuesta")
     return { url, statusCode: 302 };
   }
 
-  @Get('callback')
-  async callback(
-    @Req() req: Request,
-    @Res() res: Response,
-    @Query('code') code?: string,
-    @Query('state') state?: string,
-  ) {
-    if (!code || !state) {
-      throw new BadRequestException('Faltan parámetros code/state');
-    }
-    //console.log('Callback recibido con:', { code, state });
-
-    const cookieState = (req as any).cookies?.oauth_state;
-    //console.log('Cookie oauth_state:', cookieState);
-    if (!cookieState || cookieState !== state) {
-      throw new BadRequestException('State inválido o ausente');
-    }
-
-    const { sessionId, returnTo } = await this.authService.exchangeCodeAndCreateSession({
-      code,
-      state,
-    });
-
-    res.cookie('sid', sessionId, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
-      maxAge: 8 * 60 * 60 * 1000,
-      path: '/',
-    });
-
-    res.clearCookie('oauth_state');
-
-    // 🔹 Redirigir siempre de forma consistente
-    if (!returnTo) {
-      throw new BadRequestException('Ocurrió un error al redirigir. No se encontró returnTo.');
-    }
-    return res.redirect(returnTo);
+  @Post('exchange')
+  async exchange(@Body() body: { code: string; state: string }) {
+    const { sessionId, returnTo } = await this.authService.exchangeCodeAndCreateSession(body);
+    return { sessionId, returnTo };
   }
 
   @Get('session')
