@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import * as crypto from 'crypto';
 import { URLSearchParams } from 'url';
-import { KeycloakEnvs, GatewayEnvs , FrontEnvs} from 'src/config';
+import { KeycloakEnvs, FrontEnvs} from 'src/config';
 
 const base = KeycloakEnvs.authServerUrl;
 const realm = KeycloakEnvs.realm;
@@ -127,6 +127,31 @@ export class AuthService {
     };
   }
 
+  async logout(sessionId?: string) {
+    if (!sessionId) return; // nada que hacer
+    
+    const session = sessions.get(sessionId);
+    if (!session) return; // nada que hacer
+    try {
+      await this.keycloakLogout(session.refreshToken)
+    }
+    catch(e) {
+      console.warn('Keycloak logout failed:', (e as any)?.message ?? e);
+    }
+    sessions.delete(sessionId);
+  }
+  
+  private async keycloakLogout(refreshToken: string) {
+    if (!refreshToken) return;
+    const body = new URLSearchParams();
+    body.set('client_id', clientId);
+    if (clientSecret) body.set('client_secret', clientSecret);
+    body.set('refresh_token', refreshToken);
+    await axios.post(this.loogutEndpoint(), body, {
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      timeout: 8000,
+    });
+  }
   // ========== Helpers OIDC ==========
 
   private authorizeEndpoint() {
@@ -135,6 +160,10 @@ export class AuthService {
 
   private tokenEndpoint() {
     return `${base}/realms/${encodeURIComponent(realm)}/protocol/openid-connect/token`;
+  }
+
+  private loogutEndpoint() {
+    return `${base}/realms/${encodeURIComponent(realm)}/protocol/openid-connect/logout`;
   }
 
   private async tokenRequest(opts: { code: string; codeVerifier: string  ; redirectUri?: string }) {

@@ -35,12 +35,12 @@ export class AuthController {
   }
 
   @Get('session')
-  @ApiQuery({ name: 'sid', required: false, description: 'ID de sesión (opcional si hay cookie)' })
+  @ApiQuery({ name: 'sid', required: false, description: 'ID de sesión' })
   getSession(@Req() req: Request, @Query('sid') sidFromQuery?: string) {
     const sid = sidFromQuery ?? (req as any).cookies?.sid;
 
     if (!sid) {
-      throw new UnauthorizedException('No se proporcionó sid ni se encontró en la cookie');
+      throw new UnauthorizedException('No se encontro ID de sesión');
     }
 
     try {
@@ -48,5 +48,14 @@ export class AuthController {
     } catch (err) {
       throw new UnauthorizedException(err.message);
     }
+  }
+  
+  @Post('logout')
+  @ApiQuery({ name: 'sid', required: false, description: 'ID de sesión' })
+  logout(@Req() req: Request, @Query('sid') sidFromQuery?: string) {
+    const sid = sidFromQuery ?? (req as any).cookies?.sid;
+    console.log('Logout de sesión recibido para logout:', sid);
+    this.authService.logout(sid);
+    return { ok: true };
   }
 }
