@@ -22,8 +22,10 @@ interface EnvVars {
   // Keycloak configuration
   KEYCLOAK_URL?: string;
   KEYCLOAK_REALM?: string;
-  KEYCLOAK_CLIENT_ID?: string;
-  KEYCLOAK_CLIENT_SECRET?: string;
+  KEYCLOAK_CLIENT_ID_HUB_INTERFACE?: string;
+  KEYCLOAK_CLIENT_SECRET_HUB_INTERFACE?: string;
+  KEYCLOAK_CLIENT_ID_BENEFICIARY_INTERFACE?: string;
+  KEYCLOAK_CLIENT_SECRET_BENEFICIARY_INTERFACE?: string;
   KEYCLOAK_COOKIE_KEY?: string;
   KEYCLOAK_USE_NEST_LOGGER?: boolean;
 }
@@ -47,8 +49,10 @@ const envsSchema = joi
     // Keycloak configuration
     KEYCLOAK_URL: joi.string().uri().optional(),
     KEYCLOAK_REALM: joi.string().optional(),
-    KEYCLOAK_CLIENT_ID: joi.string().optional(),
-    KEYCLOAK_CLIENT_SECRET: joi.string().optional(),
+    KEYCLOAK_CLIENT_ID_HUB_INTERFACE: joi.string().optional(),
+    KEYCLOAK_CLIENT_SECRET_HUB_INTERFACE: joi.string().optional(),
+    KEYCLOAK_CLIENT_ID_BENEFICIARY_INTERFACE: joi.string().optional(),
+    KEYCLOAK_CLIENT_SECRET_BENEFICIARY_INTERFACE: joi.string().optional(),
     KEYCLOAK_COOKIE_KEY: joi.string().optional(),
     KEYCLOAK_USE_NEST_LOGGER: joi.boolean().optional(),
   })
@@ -86,8 +90,16 @@ export const DbEnvs = {
 export const KeycloakEnvs = {
   authServerUrl: envVars.KEYCLOAK_URL,
   realm: envVars.KEYCLOAK_REALM,
-  clientId: envVars.KEYCLOAK_CLIENT_ID,
-  secret: envVars.KEYCLOAK_CLIENT_SECRET,
+  client: {
+    hubInterface: {
+      id: envVars.KEYCLOAK_CLIENT_ID_HUB_INTERFACE,
+      secret: envVars.KEYCLOAK_CLIENT_SECRET_HUB_INTERFACE,
+    },
+    beneficiaryInterface: {
+      id: envVars.KEYCLOAK_CLIENT_ID_BENEFICIARY_INTERFACE,
+      secret: envVars.KEYCLOAK_CLIENT_SECRET_BENEFICIARY_INTERFACE,
+    },
+  },
 };
 
 export const FrontEnvs = {

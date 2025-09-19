@@ -13,10 +13,24 @@ export class TokenFromSidMiddleware implements NestMiddleware {
     console.log('   req.cookies:', req.cookies);
     const sid = req.cookies?.sid;
 
+    let clientId = req.headers['x-client-id'] as string;
+    if (!clientId) {
+      const queryClientId = req.query.client_id;
+      if (typeof queryClientId === 'string') {
+        clientId = queryClientId;
+      } else if (Array.isArray(queryClientId) && typeof queryClientId[0] === 'string') {
+        clientId = queryClientId[0];
+      }
+    }
+
+    if (!clientId) {
+      throw new Error('Falta client_id');
+    }
+
     console.log('🧩 Middleware ejecutado. SID recibido:', sid);
 
     if (sid && !req.headers.authorization) {
-      const sessionData = this.authService.getSessionData(sid);
+      const sessionData = this.authService.getSessionData(sid, clientId);
       console.log('SESSION DATA:', sessionData);
       const accessToken = sessionData?.accessToken;
       if (accessToken) {
