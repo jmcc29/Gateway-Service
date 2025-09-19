@@ -1,5 +1,5 @@
 // src/auth/auth.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import * as crypto from 'crypto';
 import { URLSearchParams } from 'url';
@@ -9,7 +9,10 @@ const base = KeycloakEnvs.authServerUrl;
 const realm = KeycloakEnvs.realm;
 const oidcScope = 'openid profile email';
 
-// ========== Tipos ==========
+const log = new Logger('AuthService');
+
+/* ===================== Tipos ===================== */
+
 type Permission = { resource: string; scopes?: string[] };
 
 type PendingAuth = {
@@ -17,7 +20,7 @@ type PendingAuth = {
   createdAt: number;
   returnTo: string;
   redirectUri: string;
-  clientId: string; // <- ahora guardamos el client_id real
+  clientId: string;
 };
 
 type ClientTokenSet = {
@@ -31,46 +34,45 @@ type ClientTokenSet = {
 type SessionData = {
   tokenType: string;
   sub?: string;
-  // Tokens por client_id real
   clients: Record<string, ClientTokenSet>;
   permissions?: Permission[];
 };
 
-// ========== Util helpers ==========
+/* ===================== Helpers puros ===================== */
 
-// obtiene origin normalizado
+// origin normalizado (sin trailing slash)
 function originOf(urlStr: string): string {
   const { origin } = new URL(urlStr);
   return origin.replace(/\/+$/, '');
 }
 
-// Deriva y valida el redirectUri a partir del returnTo
+// Deriva y valida redirectUri a partir de returnTo
 function deriveRedirectUri(returnTo?: string): string {
-  if (!returnTo) {
-    throw new Error('returnTo es obligatorio para derivar redirectUri');
-  }
+  if (!returnTo) throw new Error('returnTo es obligatorio para derivar redirectUri');
+
   let origin: string;
   try {
     origin = originOf(returnTo); // requiere returnTo absoluto
   } catch {
     throw new Error(`returnTo inválido: ${returnTo}`);
   }
+
   if (!FrontEnvs.frontendServers.includes(origin)) {
-    throw new Error(`Origen no permitido`);
+    throw new Error('Origen no permitido');
   }
   // Cada frontend debe exponer /api/auth/callback
   return `${origin}/api/auth/callback`;
 }
 
-// Construye la "whitelist" de clientes desde envs
+// Construye la "whitelist" de clientes desde envs (inmutable)
 type ClientCfg = { id?: string; secret?: string };
-const ALLOWED_CLIENTS: Record<string, { secret?: string }> = (() => {
+const ALLOWED_CLIENTS: Readonly<Record<string, { secret?: string }>> = (() => {
   const map: Record<string, { secret?: string }> = {};
-  const hub = KeycloakEnvs.client?.hubInterface;
-  const ben = KeycloakEnvs.client?.beneficiaryInterface;
+  const hub = KeycloakEnvs.client?.hubInterface as ClientCfg | undefined;
+  const ben = KeycloakEnvs.client?.beneficiaryInterface as ClientCfg | undefined;
   if (hub?.id) map[hub.id] = { secret: hub.secret };
   if (ben?.id) map[ben.id] = { secret: ben.secret };
-  return map;
+  return Object.freeze(map);
 })();
 
 function ensureClientAllowed(clientId: string) {
@@ -79,21 +81,32 @@ function ensureClientAllowed(clientId: string) {
   }
 }
 
-//Almacenamiento en memoria (cambiar por Redis en prod)
+// Base64url nativo cuando está disponible; fallback a regex
+function toBase64Url(buf: Buffer): string {
+  // Node 16+ soporta 'base64url'
+  try {
+    return buf.toString('base64url');
+  } catch {
+    return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+}
+
+/* ===================== Almacenamiento (memoria) ===================== */
+
 const pending = new Map<string, PendingAuth>();
 const sessions = new Map<string, SessionData>();
 
+/* ===================== Servicio ===================== */
+
 @Injectable()
 export class AuthService {
-  // 1) Construye URL de autorización y guarda PKCE + state
-  //    Ahora recibe el client_id real desde el frontend
+  /* ---------- 1) Construye URL de autorización y guarda PKCE + state ---------- */
   async buildAuthUrl(opts: { returnTo: string; clientId: string }) {
     const { returnTo, clientId } = opts;
     ensureClientAllowed(clientId);
 
     const state = this.randomId();
     const { verifier, challenge } = this.generatePkce();
-
     const redirectUri = deriveRedirectUri(returnTo);
 
     pending.set(state, {
@@ -101,33 +114,28 @@ export class AuthService {
       createdAt: Date.now(),
       returnTo,
       redirectUri,
-      clientId, // guardamos qué client_id inició el flujo
+      clientId,
     });
 
-    // Limpieza de expirados (simple)
     this.gcPending();
 
-    const authorizeUrl = this.authorizeEndpoint();
-    const url =
-      `${authorizeUrl}` +
-      `?client_id=${encodeURIComponent(clientId)}` +
-      `&response_type=code` +
-      `&scope=${encodeURIComponent(oidcScope)}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&state=${encodeURIComponent(state)}` +
-      `&code_challenge=${encodeURIComponent(challenge)}` +
-      `&code_challenge_method=S256`;
+    const url = this.buildAuthorizeUrl({
+      clientId,
+      redirectUri,
+      state,
+      codeChallenge: challenge,
+      scope: oidcScope,
+    });
 
     return { url, state };
   }
 
-  // 2) Intercambia code→tokens y crea/actualiza sesión (por client_id)
+  /* ---------- 2) Intercambia code→tokens y crea/actualiza sesión (por client_id) ---------- */
   async exchangeCodeAndCreateSession(params: { code: string; state: string }) {
     const { code, state } = params;
     const stash = pending.get(state);
-    if (!stash) {
-      throw new Error('State no encontrado o expirado');
-    }
+    if (!stash) throw new Error('State no encontrado o expirado');
+
     pending.delete(state);
 
     const clientId = stash.clientId;
@@ -144,11 +152,9 @@ export class AuthService {
     const now = Date.now();
     const expiresAt = now + (tokenRes.expires_in ?? 300) * 1000;
 
-    // (Opcional) decodificar JWT para claims (sub, roles)
     const sub = this.peekJwtSub(tokenRes.access_token);
     const roles = this.peekJwtRoles(tokenRes.access_token, clientId);
 
-    // Si ya existía una sesión, puedes reusar su sid; aquí creamos uno nuevo siempre
     const sessionId = this.randomId();
     const session: SessionData = {
       tokenType: tokenRes.token_type ?? 'Bearer',
@@ -173,14 +179,14 @@ export class AuthService {
     };
   }
 
-  // 3) Logout: global (todos los client_id de la sesión)
+  /* ---------- 3) Logout: global (todos los client_id de la sesión) ---------- */
   async logout(sessionId?: string) {
-    if (!sessionId) return; // nada que hacer
+    if (!sessionId) return;
 
     const session = sessions.get(sessionId);
-    if (!session) return; // nada que hacer
+    if (!session) return;
+
     try {
-      // cierra en Keycloak cada refresh_token de cada cliente
       for (const [clientId, set] of Object.entries(session.clients ?? {})) {
         const secret = ALLOWED_CLIENTS[clientId]?.secret;
         if (set.refreshToken) {
@@ -188,12 +194,14 @@ export class AuthService {
         }
       }
     } catch (e) {
-      console.warn('Keycloak logout failed:', (e as any)?.message ?? e);
+      const msg = (e as any)?.message ?? e;
+      log.warn(`Keycloak logout failed: ${msg as string}`);
     }
+
     sessions.delete(sessionId);
   }
 
-  // ========== Helpers OIDC ==========
+  /* ===================== Helpers OIDC ===================== */
 
   private authorizeEndpoint() {
     return `${base}/realms/${encodeURIComponent(realm)}/protocol/openid-connect/auth`;
@@ -205,6 +213,24 @@ export class AuthService {
 
   private logoutEndpoint() {
     return `${base}/realms/${encodeURIComponent(realm)}/protocol/openid-connect/logout`;
+  }
+
+  private buildAuthorizeUrl(input: {
+    clientId: string;
+    redirectUri: string;
+    state: string;
+    codeChallenge: string;
+    scope: string;
+  }) {
+    const url = new URL(this.authorizeEndpoint());
+    url.searchParams.set('client_id', input.clientId);
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('scope', input.scope);
+    url.searchParams.set('redirect_uri', input.redirectUri);
+    url.searchParams.set('state', input.state);
+    url.searchParams.set('code_challenge', input.codeChallenge);
+    url.searchParams.set('code_challenge_method', 'S256');
+    return url.toString();
   }
 
   private async tokenRequest(opts: {
@@ -223,10 +249,9 @@ export class AuthService {
 
     const { data } = await axios.post(this.tokenEndpoint(), body, {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      timeout: 10000,
+      timeout: 10_000,
     });
 
-    // data: { access_token, refresh_token, id_token, expires_in, ... }
     return data as {
       access_token: string;
       refresh_token?: string;
@@ -243,32 +268,29 @@ export class AuthService {
     client: { id: string; secret?: string },
   ) {
     if (!refreshToken) return;
+
     const body = new URLSearchParams();
     body.set('client_id', client.id);
     if (client.secret) body.set('client_secret', client.secret);
     body.set('refresh_token', refreshToken);
+
     await axios.post(this.logoutEndpoint(), body, {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      timeout: 8000,
+      timeout: 8_000,
     });
   }
 
-  // ========== PKCE utils ==========
+  /* ===================== PKCE & misc utils ===================== */
 
   private generatePkce() {
-    const verifier = this.base64url(crypto.randomBytes(32)); // 43-128 chars
-    const challenge = this.base64url(crypto.createHash('sha256').update(verifier).digest());
+    const verifier = toBase64Url(crypto.randomBytes(32)); // 43-128 chars
+    const challenge = toBase64Url(crypto.createHash('sha256').update(verifier).digest());
     return { verifier, challenge };
   }
 
-  private base64url(buf: Buffer) {
-    return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-  }
-
-  // ========== Misc utils ==========
-
   private randomId() {
-    return this.base64url(crypto.randomBytes(24));
+    // UUID es válido, pero mantenemos base64url para no alterar formato externo
+    return toBase64Url(crypto.randomBytes(24));
   }
 
   private gcPending() {
@@ -279,17 +301,13 @@ export class AuthService {
   private gcSessions() {
     const now = Date.now();
     for (const [k, v] of sessions) {
-      // si la sesión no tiene ningún token vigente, puedes limpiarla;
-      // aquí se deja simple y no se elimina por expiración de access token
-      // (el refresh puede seguir vivo). Si quieres, agrega lógica extra.
       if (!v?.clients || Object.keys(v.clients).length === 0) {
         sessions.delete(k);
-      } else {
-        // opcional: limpiar client entries expiradas
-        for (const [cid, set] of Object.entries(v.clients)) {
-          if (set.expiresAt < now && !set.refreshToken) {
-            delete v.clients[cid];
-          }
+        continue;
+      }
+      for (const [cid, set] of Object.entries(v.clients)) {
+        if (set.expiresAt < now && !set.refreshToken) {
+          delete v.clients[cid];
         }
       }
     }
@@ -311,8 +329,6 @@ export class AuthService {
       if (!jwt) return undefined;
       const [, payload] = jwt.split('.');
       const json = JSON.parse(Buffer.from(payload, 'base64').toString('utf8'));
-      // Realm roles: json.realm_access.roles
-      // Client roles: json.resource_access[clientId]?.roles
       const realmRoles: string[] = json?.realm_access?.roles ?? [];
       const clientRoles: string[] = json?.resource_access?.[clientId]?.roles ?? [];
       return [...new Set([...realmRoles, ...clientRoles])];
@@ -321,19 +337,19 @@ export class AuthService {
     }
   }
 
+  /* ---------- API pública auxiliar ---------- */
+
   // Devuelve datos de sesión específicos para un client_id
   getSessionData(sessionId: string, clientId: string) {
     const session = sessions.get(sessionId);
-    if (!session) {
-      throw new Error('Sesión inválida o expirada');
-    }
+    if (!session) throw new Error('Sesión inválida o expirada');
+
     const set = session.clients?.[clientId];
-    if (!set) {
-      throw new Error(`No hay tokens para el client_id solicitado`);
-    }
+    if (!set) throw new Error('No hay tokens para el client_id solicitado');
+
     return {
       accessToken: set.accessToken,
-      expiresIn: set.expiresAt,
+      expiresIn: set.expiresAt, // se mantiene el mismo contrato (timestamp ms)
       sub: session.sub,
       roles: set.roles,
     };
