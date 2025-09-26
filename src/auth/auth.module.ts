@@ -1,27 +1,12 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { NatsService } from 'src/common';
-import {
-  KeycloakConnectModule,
-  PolicyEnforcementMode,
-  TokenValidation,
-} from 'nest-keycloak-connect';
-import { KeycloakEnvs } from 'src/config';
+import { AUTH_STORE } from './store/auth.store';
+import { MemoryAuthStore } from './store/memory.store';
 @Module({
-  imports: [
-    // KeycloakConnectModule.register({
-    //   authServerUrl: KeycloakEnvs.authServerUrl,
-    //   // authServerUrl: "http://192.168.1.100:8080",
-    //   realm: KeycloakEnvs.realm,
-    //   clientId: KeycloakEnvs.clientId,
-    //   secret: KeycloakEnvs.secret,
-    //   // policyEnforcement: PolicyEnforcementMode.ENFORCING,
-    //   // tokenValidation: TokenValidation.ONLINE,
-    // }),
-  ],
   controllers: [AuthController],
-  providers: [AuthService, NatsService],
+  providers: [AuthService, NatsService, { provide: AUTH_STORE, useClass: MemoryAuthStore }],
   exports: [AuthService],
 })
 export class AuthModule {}

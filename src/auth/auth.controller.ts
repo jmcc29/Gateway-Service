@@ -43,7 +43,7 @@ export class AuthController {
    */
   @Post('exchange')
   @ApiResponse({ status: 200, description: 'Sesión creada', schema: { example: { sessionId: '...', returnTo: '...' } } })
-  async exchange(@Body() body: { code: string; state: string }) {
+  async exchange(@Body() body: { code: string; state: string , sidCookie?: string}) {
     if (!body?.code || !body?.state) {
       throw new BadRequestException('Faltan code/state');
     }

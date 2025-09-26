@@ -32,7 +32,7 @@ export class TokenFromSidMiddleware implements NestMiddleware {
     if (sid && !req.headers.authorization) {
       const sessionData = this.authService.getSessionData(sid, clientId);
       console.log('SESSION DATA:', sessionData);
-      const accessToken = sessionData?.accessToken;
+      const accessToken = (await sessionData).accessToken;
       if (accessToken) {
         req.headers.authorization = `Bearer ${accessToken}`;
         console.log('✅ Token inyectado al header Authorization');
