@@ -26,7 +26,11 @@ export class AuthController {
    */
   @Get('login')
   @Redirect() // Nest gestionará el 302 con lo que retornemos
-  @ApiQuery({ name: 'returnTo', required: true, description: 'URL absoluta del frontend que inició el flujo' })
+  @ApiQuery({
+    name: 'returnTo',
+    required: true,
+    description: 'URL absoluta del frontend que inició el flujo',
+  })
   @ApiQuery({ name: 'client_id', required: true, description: 'client_id real de Keycloak' })
   async login(@Query('returnTo') returnTo?: string, @Query('client_id') clientId?: string) {
     if (!returnTo) throw new BadRequestException('Falta returnTo');
@@ -42,8 +46,12 @@ export class AuthController {
    * El client_id utilizado se recupera del state guardado en pending (en el servicio).
    */
   @Post('exchange')
-  @ApiResponse({ status: 200, description: 'Sesión creada', schema: { example: { sessionId: '...', returnTo: '...' } } })
-  async exchange(@Body() body: { code: string; state: string , sidCookie?: string}) {
+  @ApiResponse({
+    status: 200,
+    description: 'Sesión creada',
+    schema: { example: { sessionId: '...', returnTo: '...' } },
+  })
+  async exchange(@Body() body: { code: string; state: string; sidCookie?: string }) {
     if (!body?.code || !body?.state) {
       throw new BadRequestException('Faltan code/state');
     }
@@ -56,8 +64,16 @@ export class AuthController {
    * Lee el sid de cookie o query y requiere client_id para seleccionar el token correcto.
    */
   @Get('session')
-  @ApiQuery({ name: 'sid', required: false, description: 'ID de sesión (si no, se toma de cookie "sid")' })
-  @ApiQuery({ name: 'client_id', required: true, description: 'client_id del que se requiere el token' })
+  @ApiQuery({
+    name: 'sid',
+    required: false,
+    description: 'ID de sesión (si no, se toma de cookie "sid")',
+  })
+  @ApiQuery({
+    name: 'client_id',
+    required: true,
+    description: 'client_id del que se requiere el token',
+  })
   getSession(
     @Req() req: Request,
     @Query('sid') sidFromQuery?: string,
@@ -79,11 +95,93 @@ export class AuthController {
    * (Si en el futuro quieres logout por cliente, agrega client_id opcional y delega en el servicio).
    */
   @Post('logout')
-  @ApiQuery({ name: 'sid', required: false, description: 'ID de sesión (si no, se toma de cookie "sid")' })
+  @ApiQuery({
+    name: 'sid',
+    required: false,
+    description: 'ID de sesión (si no, se toma de cookie "sid")',
+  })
   async logout(@Req() req: Request, @Query('sid') sidFromQuery?: string) {
     const sid = sidFromQuery ?? (req as any).cookies?.sid;
     if (!sid) throw new BadRequestException('Falta sid');
     await this.authService.logout(sid);
     return { ok: true };
+  }
+
+  @Get('permissions')
+  @ApiQuery({ name: 'sid', required: false, description: 'ID de sesión (si no, cookie "sid")' })
+  @ApiQuery({
+    name: 'client_id',
+    required: true,
+    description: 'client_id desde el que se toma el access_token del usuario',
+  })
+  @ApiQuery({
+    name: 'audience',
+    required: true,
+    description: 'client_id (resource server) contra el que se calculan permisos UMA',
+  })
+  @ApiQuery({
+    name: 'response_mode',
+    required: false,
+    description: 'permissions | decision (default: permissions)',
+  })
+  async permissions(
+    @Req() req: Request,
+    @Query('sid') sidFromQuery?: string,
+    @Query('client_id') clientId?: string,
+    @Query('audience') audience?: string,
+    @Query('response_mode') responseMode?: 'permissions' | 'decision',
+  ) {
+    const sid = sidFromQuery ?? (req as any).cookies?.sid;
+    if (!sid) throw new UnauthorizedException('No se encontró ID de sesión');
+    if (!clientId) throw new BadRequestException('Falta client_id');
+    if (!audience) throw new BadRequestException('Falta audience');
+
+    try {
+      const data = await this.authService.getPermissions({
+        sessionId: sid,
+        clientId,
+        audience,
+        responseMode,
+      });
+      return { audience, response_mode: responseMode ?? 'permissions', data };
+    } catch (err: any) {
+      throw new UnauthorizedException(err?.message ?? 'No fue posible obtener permisos');
+    }
+  }
+
+  @Get('profile')
+  @ApiQuery({ name: 'sid', required: false, description: 'ID de sesión (si no, cookie "sid")' })
+  @ApiQuery({ name: 'client_id', required: true, description: 'client_id del que se leen tokens' })
+  @ApiQuery({
+    name: 'audience',
+    required: false,
+    description: 'client_id (resource server) para calcular permisos UMA',
+  })
+  @ApiQuery({
+    name: 'response_mode',
+    required: false,
+    description: 'permissions | decision (default: permissions)',
+  })
+  async profile(
+    @Req() req: Request,
+    @Query('sid') sidFromQuery?: string,
+    @Query('client_id') clientId?: string,
+    @Query('audience') audience?: string,
+    @Query('response_mode') responseMode?: 'permissions' | 'decision',
+  ) {
+    const sid = sidFromQuery ?? (req as any).cookies?.sid;
+    if (!sid) throw new UnauthorizedException('No se encontró ID de sesión');
+    if (!clientId) throw new BadRequestException('Falta client_id');
+
+    try {
+      return await this.authService.getProfile({
+        sessionId: sid,
+        clientId,
+        audience,
+        responseMode,
+      });
+    } catch (err: any) {
+      throw new UnauthorizedException(err?.message ?? 'Sesión inválida');
+    }
   }
 }

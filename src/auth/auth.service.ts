@@ -24,12 +24,14 @@ const ALLOWED_CLIENTS: Readonly<Record<string, { secret?: string }>> = (() => {
 })();
 
 function ensureClientAllowed(clientId: string) {
-  if (!clientId || !ALLOWED_CLIENTS[clientId]) throw new Error(`client_id no permitido: ${clientId}`);
+  if (!clientId || !ALLOWED_CLIENTS[clientId])
+    throw new Error(`client_id no permitido: ${clientId}`);
 }
 function toBase64Url(buf: Buffer): string {
-  try { return buf.toString('base64url'); }
-  catch {
-    return buf.toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'');
+  try {
+    return buf.toString('base64url');
+  } catch {
+    return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
   }
 }
 function originOf(urlStr: string): string {
@@ -39,7 +41,11 @@ function originOf(urlStr: string): string {
 function deriveRedirectUri(returnTo?: string): string {
   if (!returnTo) throw new Error('returnTo es obligatorio para derivar redirectUri');
   let origin: string;
-  try { origin = originOf(returnTo); } catch { throw new Error(`returnTo inválido: ${returnTo}`); }
+  try {
+    origin = originOf(returnTo);
+  } catch {
+    throw new Error(`returnTo inválido: ${returnTo}`);
+  }
   if (!FrontEnvs.frontendServers.includes(origin)) throw new Error('Origen no permitido');
   return `${origin}/api/auth/callback`;
 }
@@ -47,7 +53,7 @@ function deriveRedirectUri(returnTo?: string): string {
 @Injectable()
 export class AuthService {
   constructor(@Inject(AUTH_STORE) private readonly store: AuthStore) {}
-  
+
   // 1) Build URL de autorización y guarda pending (state→PKCE/returnTo/redirectUri/clientId)
   async buildAuthUrl(opts: { returnTo: string; clientId: string }) {
     const { returnTo, clientId } = opts;
@@ -250,21 +256,30 @@ export class AuthService {
     const challenge = toBase64Url(crypto.createHash('sha256').update(verifier).digest());
     return { verifier, challenge };
   }
-  private randomId() { return toBase64Url(crypto.randomBytes(24)); }
+  private randomId() {
+    return toBase64Url(crypto.randomBytes(24));
+  }
 
   private peekJwtSub(jwt?: string) {
-    try { if (!jwt) return; const [, p] = jwt.split('.'); return JSON.parse(Buffer.from(p,'base64').toString('utf8'))?.sub; }
-    catch { return; }
+    try {
+      if (!jwt) return;
+      const [, p] = jwt.split('.');
+      return JSON.parse(Buffer.from(p, 'base64').toString('utf8'))?.sub;
+    } catch {
+      return;
+    }
   }
   private peekJwtRoles(jwt: string | undefined, clientId: string) {
     try {
       if (!jwt) return;
       const [, p] = jwt.split('.');
-      const j = JSON.parse(Buffer.from(p,'base64').toString('utf8'));
+      const j = JSON.parse(Buffer.from(p, 'base64').toString('utf8'));
       const realm: string[] = j?.realm_access?.roles ?? [];
       const client: string[] = j?.resource_access?.[clientId]?.roles ?? [];
       return [...new Set([...realm, ...client])];
-    } catch { return; }
+    } catch {
+      return;
+    }
   }
 
   // ====== API para otros módulos ======
@@ -274,5 +289,127 @@ export class AuthService {
     const set = s.clients?.[clientId];
     if (!set) throw new Error('No hay tokens para el client_id solicitado');
     return { accessToken: set.accessToken, expiresIn: set.expiresAt, sub: s.sub, roles: set.roles };
+  }
+
+  // ====== JWT helpers ======
+  private parseJwt(jwt?: string): any | undefined {
+    try {
+      if (!jwt) return;
+      const [, p] = jwt.split('.');
+      return JSON.parse(Buffer.from(p, 'base64').toString('utf8'));
+    } catch {
+      return;
+    }
+  }
+
+  private peekUserProfile(jwt?: string) {
+    const j = this.parseJwt(jwt);
+    if (!j) return;
+    return {
+      sub: j.sub as string | undefined,
+      username: j.preferred_username as string | undefined,
+      name: j.name as string | undefined,
+      given_name: j.given_name as string | undefined,
+      family_name: j.family_name as string | undefined,
+      email: j.email as string | undefined,
+      email_verified: j.email_verified as boolean | undefined,
+    };
+  }
+
+  // ====== UMA / Entitlements ======
+  private async fetchUmaPermissions(
+    accessToken: string,
+    audience: string,
+    responseMode: 'permissions' | 'decision' = 'permissions',
+  ) {
+    const body = new URLSearchParams();
+    body.set('grant_type', 'urn:ietf:params:oauth:grant-type:uma-ticket');
+    body.set('audience', audience);
+    body.set('response_mode', responseMode);
+
+    const { data } = await axios.post(this.tokenEndpoint(), body, {
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        authorization: `Bearer ${accessToken}`,
+      },
+      timeout: 10_000,
+    });
+
+    // response_mode=permissions -> lista de { resource_id?, resource_name?, scopes?[] }
+    // Normalizamos a strings "resource:scope" cuando sea posible.
+    const normalize = (perm: any) => {
+      const res = perm.rsname ?? perm.rsid ?? 'unknown';
+      const scopes: string[] = Array.isArray(perm.scopes) ? perm.scopes : [];
+      if (!scopes.length) return [`${res}:*`];
+      return scopes.map((s) => `${res}:${s}`);
+    };
+
+    if (Array.isArray(data)) {
+      const flat = data.flatMap(normalize);
+      return Array.from(new Set(flat)); // únicos
+    }
+
+    // Si response_mode=decision, data = { result: boolean }
+    return data;
+  }
+
+  // ====== Facade para /auth/me ======
+  async getProfile(params: {
+    sessionId: string;
+    clientId: string;
+    audience?: string;
+    responseMode?: 'permissions' | 'decision';
+  }) {
+    const { sessionId, clientId, audience, responseMode = 'permissions' } = params;
+
+    const s = await this.store.getSession(sessionId);
+    if (!s) throw new Error('Sesión inválida o expirada');
+
+    const set = s.clients?.[clientId];
+    if (!set) throw new Error('No hay tokens para el client_id solicitado');
+
+    const profile = this.peekUserProfile(set.accessToken);
+    const roles = set.roles ?? this.peekJwtRoles(set.accessToken, clientId) ?? [];
+
+    let permissions: string[] | { result: boolean } | undefined;
+    if (audience) {
+      try {
+        permissions = await this.fetchUmaPermissions(set.accessToken, audience, responseMode);
+      } catch (e: any) {
+        log.warn(`UMA permissions error audience=${audience}: ${e?.message ?? e}`);
+        // No rompas /me por error de UMA; devuelve lo disponible
+      }
+    }
+
+    return {
+      sub: s.sub ?? profile?.sub,
+      username: profile?.username,
+      name: profile?.name,
+      given_name: profile?.given_name,
+      family_name: profile?.family_name,
+      email: profile?.email,
+      email_verified: profile?.email_verified,
+      roles,
+      permissions, // puede ser undefined si no se pidió audience
+      expiresAt: set.expiresAt,
+      tokenType: s.tokenType,
+      clientId,
+    };
+  }
+
+  // ====== Endpoint específico sólo-permisos (opcional pero práctico) ======
+  async getPermissions(params: {
+    sessionId: string;
+    clientId: string;
+    audience: string;
+    responseMode?: 'permissions' | 'decision';
+  }) {
+    const { sessionId, clientId, audience, responseMode = 'permissions' } = params;
+    const s = await this.store.getSession(sessionId);
+    if (!s) throw new Error('Sesión inválida o expirada');
+    const set = s.clients?.[clientId];
+    if (!set) throw new Error('No hay tokens para el client_id solicitado');
+
+    return this.fetchUmaPermissions(set.accessToken, audience, responseMode);
   }
 }
