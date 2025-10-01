@@ -1,6 +1,12 @@
 import 'dotenv/config';
 import * as joi from 'joi';
 
+interface OidcClient {
+  id: string;
+  secret: string;
+  origins: string[];
+} 
+
 interface EnvVars {
   PORT: number;
   HOST: string;
@@ -22,12 +28,7 @@ interface EnvVars {
   // Keycloak configuration
   KEYCLOAK_URL?: string;
   KEYCLOAK_REALM?: string;
-  KEYCLOAK_CLIENT_ID_HUB_INTERFACE?: string;
-  KEYCLOAK_CLIENT_SECRET_HUB_INTERFACE?: string;
-  KEYCLOAK_CLIENT_ID_BENEFICIARY_INTERFACE?: string;
-  KEYCLOAK_CLIENT_SECRET_BENEFICIARY_INTERFACE?: string;
-  KEYCLOAK_COOKIE_KEY?: string;
-  KEYCLOAK_USE_NEST_LOGGER?: boolean;
+  OIDC_CLIENTS?: string;
 }
 
 const envsSchema = joi
@@ -49,12 +50,7 @@ const envsSchema = joi
     // Keycloak configuration
     KEYCLOAK_URL: joi.string().uri().optional(),
     KEYCLOAK_REALM: joi.string().optional(),
-    KEYCLOAK_CLIENT_ID_HUB_INTERFACE: joi.string().optional(),
-    KEYCLOAK_CLIENT_SECRET_HUB_INTERFACE: joi.string().optional(),
-    KEYCLOAK_CLIENT_ID_BENEFICIARY_INTERFACE: joi.string().optional(),
-    KEYCLOAK_CLIENT_SECRET_BENEFICIARY_INTERFACE: joi.string().optional(),
-    KEYCLOAK_COOKIE_KEY: joi.string().optional(),
-    KEYCLOAK_USE_NEST_LOGGER: joi.boolean().optional(),
+    OIDC_CLIENTS: joi.string().optional(),
   })
   .unknown(true);
 
@@ -69,6 +65,30 @@ if (error) {
 }
 
 const envVars: EnvVars = value;
+
+/* ======== Parse y validación de OIDC_CLIENTS ======== */
+const clientsRaw: unknown = (() => {
+  try {
+    return JSON.parse(envVars.OIDC_CLIENTS ?? '[]');
+  } catch (e) {
+    throw new Error(`Invalid JSON in OIDC_CLIENTS: ${e}`);
+  }
+})();
+
+const clientsSchema = joi.array().items(
+  joi.object({
+    id: joi.string().min(1).required(),
+    secret: joi.string().min(1).required(),
+    origins: joi.array().items(joi.string().uri()).min(1).required(),
+  })
+).min(1);
+
+const { error: clientsErr, value: clients } = clientsSchema.validate(clientsRaw);
+if (clientsErr) throw new Error(`OIDC_CLIENTS validation error: ${clientsErr.message}`);
+
+/* ======== Helpers ======== */
+const normalizeOrigin = (o: string) => o.replace(/\/+$/, ''); // quita / final
+const uniq = <T,>(arr: T[]) => Array.from(new Set(arr));
 
 export const GatewayEnvs = {
   host: envVars.HOST,
@@ -90,20 +110,13 @@ export const DbEnvs = {
 export const KeycloakEnvs = {
   authServerUrl: envVars.KEYCLOAK_URL,
   realm: envVars.KEYCLOAK_REALM,
-  client: {
-    hubInterface: {
-      id: envVars.KEYCLOAK_CLIENT_ID_HUB_INTERFACE,
-      secret: envVars.KEYCLOAK_CLIENT_SECRET_HUB_INTERFACE,
-    },
-    beneficiaryInterface: {
-      id: envVars.KEYCLOAK_CLIENT_ID_BENEFICIARY_INTERFACE,
-      secret: envVars.KEYCLOAK_CLIENT_SECRET_BENEFICIARY_INTERFACE,
-    },
-  },
+  client: clients as OidcClient[],
 };
 
 export const FrontEnvs = {
-  frontendServers: envVars.FRONTENDS_SERVERS,
+   frontendServers: uniq(
+    (clients as OidcClient[]).flatMap(c => c.origins.map(normalizeOrigin))
+  ),
 };
 
 export const PvtEnvs = {

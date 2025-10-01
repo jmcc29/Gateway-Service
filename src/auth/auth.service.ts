@@ -3,7 +3,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import * as crypto from 'crypto';
 import { URLSearchParams } from 'url';
-import { KeycloakEnvs, FrontEnvs } from 'src/config';
+import { KeycloakEnvs } from 'src/config';
 import type { AuthStore } from './store/auth.store';
 import { AUTH_STORE } from './store/auth.store';
 import type { SessionData } from './interfaces';
@@ -14,58 +14,109 @@ const realm = KeycloakEnvs.realm;
 const oidcScope = 'openid profile email';
 const log = new Logger('AuthService');
 
-type ClientCfg = { id?: string; secret?: string };
-const ALLOWED_CLIENTS: Readonly<Record<string, { secret?: string }>> = (() => {
-  const map: Record<string, { secret?: string }> = {};
-  const hub = KeycloakEnvs.client?.hubInterface as ClientCfg | undefined;
-  const ben = KeycloakEnvs.client?.beneficiaryInterface as ClientCfg | undefined;
-  if (hub?.id) map[hub.id] = { secret: hub.secret };
-  if (ben?.id) map[ben.id] = { secret: ben.secret };
-  return Object.freeze(map);
-})();
+/* ===================== Tipos y helpers ===================== */
+type OidcClient = { id: string; secret?: string; origins: string[] };
 
-function ensureClientAllowed(clientId: string) {
-  if (!clientId || !ALLOWED_CLIENTS[clientId])
-    throw new Error(`client_id no permitido: ${clientId}`);
-}
 function toBase64Url(buf: Buffer): string {
   try {
     return buf.toString('base64url');
   } catch {
-    return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    return buf
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
   }
 }
+
+function normalizeOrigin(o: string) {
+  try {
+    const { origin } = new URL(o);
+    return origin.replace(/\/+$/, '');
+  } catch {
+    return o.replace(/\/+$/, '');
+  }
+}
+
 function originOf(urlStr: string): string {
   const { origin } = new URL(urlStr);
-  return origin.replace(/\/+$/, '');
+  return normalizeOrigin(origin);
 }
-function deriveRedirectUri(returnTo?: string): string {
-  if (!returnTo) throw new Error('returnTo es obligatorio para derivar redirectUri');
-  let origin: string;
-  try {
-    origin = originOf(returnTo);
-  } catch {
-    throw new Error(`returnTo inválido: ${returnTo}`);
+
+function deriveRedirectUriFromOrigin(origin: string) {
+  return `${normalizeOrigin(origin)}/api/auth/callback`;
+}
+
+/* ===================== Registro dinámico de clientes ===================== */
+/** KeycloakEnvs.client debe ser OidcClient[] (de tu envs.ts) */
+const CLIENTS_ARR: OidcClient[] = (Array.isArray(KeycloakEnvs.client) ? KeycloakEnvs.client : []).map(
+  (c) => ({ ...c, origins: (c.origins ?? []).map(normalizeOrigin) }),
+);
+
+/** Acceso O(1) por id */
+const CLIENTS_BY_ID = new Map<string, OidcClient>(CLIENTS_ARR.map((c) => [c.id, c]));
+
+/** Mapa origin -> clientId (para deducir cliente por returnTo/origin) */
+const ORIGIN_TO_CLIENT_ID = (() => {
+  const map = new Map<string, string>();
+  for (const c of CLIENTS_ARR) {
+    for (const o of c.origins) {
+      const prev = map.get(o);
+      if (prev && prev !== c.id) {
+        log.warn(`⚠️ Origin ${o} está asociado a múltiples client_ids: ${prev}, ${c.id}`);
+      }
+      map.set(o, c.id);
+    }
   }
-  if (!FrontEnvs.frontendServers.includes(origin)) throw new Error('Origen no permitido');
-  return `${origin}/api/auth/callback`;
+  return map;
+})();
+
+function ensureClientAllowed(clientId: string) {
+  if (!clientId || !CLIENTS_BY_ID.has(clientId)) {
+    throw new Error(`client_id no permitido: ${clientId}`);
+  }
+}
+
+function resolveClientByOrigin(origin: string): OidcClient {
+  const id = ORIGIN_TO_CLIENT_ID.get(normalizeOrigin(origin));
+  if (!id) throw new Error(`Origen no permitido: ${origin}`);
+  return CLIENTS_BY_ID.get(id)!;
+}
+
+function ensureOriginBelongsToClient(origin: string, client: OidcClient) {
+  const norm = normalizeOrigin(origin);
+  if (!client.origins.includes(norm)) {
+    throw new Error(`El client_id "${client.id}" no permite el origin ${norm}`);
+  }
 }
 
 @Injectable()
 export class AuthService {
   constructor(
     @Inject(AUTH_STORE) private readonly store: AuthStore,
-    private readonly kc: KeycloakClientService, // Nuevo servicio centralizado de Keycloak
+    private readonly kc: KeycloakClientService, // Servicio centralizado de Keycloak
   ) {}
 
   // 1) Build URL de autorización y guarda pending (state→PKCE/returnTo/redirectUri/clientId)
-  async buildAuthUrl(opts: { returnTo: string; clientId: string }) {
-    const { returnTo, clientId } = opts;
-    ensureClientAllowed(clientId);
+  //    clientId es OPCIONAL: si no lo envías, se deduce por el origin de returnTo.
+  async buildAuthUrl(opts: { returnTo: string; clientId?: string }) {
+    const { returnTo } = opts;
+    const origin = originOf(returnTo);
+
+    // Si pasan clientId, validar que pertenezca a ese origin; si no, deducir por origin
+    let client: OidcClient;
+    if (opts.clientId) {
+      ensureClientAllowed(opts.clientId);
+      client = CLIENTS_BY_ID.get(opts.clientId)!;
+      ensureOriginBelongsToClient(origin, client);
+    } else {
+      client = resolveClientByOrigin(origin);
+    }
+    const clientId = client.id;
 
     const state = this.randomId();
     const { verifier, challenge } = this.generatePkce();
-    const redirectUri = deriveRedirectUri(returnTo);
+    const redirectUri = deriveRedirectUriFromOrigin(origin);
 
     await this.store.setPending(state, {
       codeVerifier: verifier,
@@ -114,7 +165,7 @@ export class AuthService {
 
     const clientId = stash.clientId;
     ensureClientAllowed(clientId);
-    const clientSecret = ALLOWED_CLIENTS[clientId]?.secret;
+    const client = CLIENTS_BY_ID.get(clientId)!;
 
     let tokenRes: {
       access_token: string;
@@ -131,7 +182,7 @@ export class AuthService {
         code,
         codeVerifier: stash.codeVerifier,
         redirectUri: stash.redirectUri,
-        client: { id: clientId, secret: clientSecret },
+        client: { id: client.id, secret: client.secret },
       });
     } catch (e: any) {
       log.error(`TOKEN REQUEST FAILED clientId=${clientId} state=${state} msg=${e?.message ?? e}`);
@@ -190,9 +241,9 @@ export class AuthService {
 
     try {
       for (const [clientId, set] of Object.entries(session.clients ?? {})) {
-        const secret = ALLOWED_CLIENTS[clientId]?.secret;
-        if (set.refreshToken) {
-          await this.keycloakLogout(set.refreshToken, { id: clientId, secret });
+        const client = CLIENTS_BY_ID.get(clientId);
+        if (set.refreshToken && client) {
+          await this.keycloakLogout(set.refreshToken, { id: client.id, secret: client.secret });
         }
       }
     } catch (e: any) {
@@ -264,6 +315,16 @@ export class AuthService {
     return toBase64Url(crypto.randomBytes(24));
   }
 
+  private parseJwt(jwt?: string): any | undefined {
+    try {
+      if (!jwt) return;
+      const [, p] = jwt.split('.');
+      return JSON.parse(Buffer.from(p, 'base64').toString('utf8'));
+    } catch {
+      return;
+    }
+  }
+
   private peekJwtSub(jwt?: string) {
     try {
       if (!jwt) return;
@@ -273,6 +334,7 @@ export class AuthService {
       return;
     }
   }
+
   private peekJwtRoles(jwt: string | undefined, clientId: string) {
     try {
       if (!jwt) return;
@@ -286,7 +348,7 @@ export class AuthService {
     }
   }
 
-  // ====== API para otros módulos ======
+  // ====== API para otros módulos (manteniendo nombres) ======
   async getSessionData(sessionId: string, clientId: string) {
     const s = await this.store.getSession(sessionId);
     if (!s) throw new Error('Sesión inválida o expirada');
@@ -295,25 +357,14 @@ export class AuthService {
     return { accessToken: set.accessToken, expiresIn: set.expiresAt, sub: s.sub, roles: set.roles };
   }
 
-  /** (Opcional) Verificación criptográfica del access_token guardado (issuer + azp∈permitidos) */
+  /** Verificación criptográfica del access_token guardado (issuer + azp∈permitidos) */
   async verifySessionAccessToken(sessionId: string, clientId: string) {
     const s = await this.store.getSession(sessionId);
     if (!s) throw new Error('Sesión inválida o expirada');
     const set = s.clients?.[clientId];
     if (!set?.accessToken) throw new Error('No hay access_token para el client_id');
-    const allowed = Object.keys(ALLOWED_CLIENTS);
+    const allowed = Array.from(CLIENTS_BY_ID.keys()); // ahora dinámico
     return this.kc.verifyAccessToken(set.accessToken, { allowedClients: allowed });
-  }
-
-  // ====== JWT helpers ======
-  private parseJwt(jwt?: string): any | undefined {
-    try {
-      if (!jwt) return;
-      const [, p] = jwt.split('.');
-      return JSON.parse(Buffer.from(p, 'base64').toString('utf8'));
-    } catch {
-      return;
-    }
   }
 
   private peekUserProfile(jwt?: string) {
@@ -331,7 +382,6 @@ export class AuthService {
   }
 
   // ====== UMA / Entitlements ======
-
   /**
    * Devuelve permisos normalizados (array de strings) usando SIEMPRE response_mode=permissions.
    * Se ignora cualquier "decision" que externamente intenten pasar.
@@ -363,9 +413,9 @@ export class AuthService {
   async evaluatePermission(params: {
     sessionId: string;
     clientId: string;
-    audience: string;       // resource server/cliente API en Keycloak
-    resource: string;       // nombre del recurso (rsname)
-    scope: string;          // scope de UMA
+    audience: string; // resource server/cliente API en Keycloak
+    resource: string; // nombre del recurso (rsname)
+    scope: string; // scope de UMA
   }): Promise<boolean> {
     const { sessionId, clientId, audience, resource, scope } = params;
 
@@ -382,7 +432,9 @@ export class AuthService {
       });
       return !!data?.result;
     } catch (e: any) {
-      log.warn(`UMA decision error audience=${audience} perm=${resource}#${scope}: ${e?.message ?? e}`);
+      log.warn(
+        `UMA decision error audience=${audience} perm=${resource}#${scope}: ${e?.message ?? e}`,
+      );
       return false;
     }
   }
@@ -392,8 +444,6 @@ export class AuthService {
     sessionId: string;
     clientId: string;
     audience?: string;
-    // responseMode ignorado: siempre usamos "permissions"
-    responseMode?: 'permissions' | 'decision';
   }) {
     const { sessionId, clientId, audience } = params;
 
@@ -436,7 +486,6 @@ export class AuthService {
     sessionId: string;
     clientId: string;
     audience: string;
-    // responseMode ignorado para mantener compatibilidad con el Controller
   }) {
     const { sessionId, clientId, audience } = params;
     const s = await this.store.getSession(sessionId);

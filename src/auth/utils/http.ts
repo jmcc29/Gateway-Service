@@ -1,4 +1,4 @@
-// src/auth/http-utils.ts
+// src/auth/utils/http.ts
 import { Request } from 'express';
 
 export function extractSid(req: Request): string | undefined {

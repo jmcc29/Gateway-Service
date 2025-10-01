@@ -36,7 +36,7 @@ export class PersonsController {
   ) {}
 
   //@Scope(ValidScopes.viewFingerprint)
-  @UseGuards(ValidTokenGuard)
+  // @UseGuards(ValidTokenGuard)
   @Get('showListFingerprint')
   @ApiResponse({
     status: 200,
@@ -45,7 +45,7 @@ export class PersonsController {
   async showListFingerprint() {
     return this.nats.send('person.showListFingerprint', {});
   }
-  @UseGuards(ValidTokenGuard)
+  // @UseGuards(ValidTokenGuard)
   @Scope(ValidScopes.view)
   @Get()
   @ApiResponse({ status: 200, description: 'Mostrar todas las personas' })
