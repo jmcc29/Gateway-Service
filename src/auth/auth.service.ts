@@ -7,6 +7,7 @@ import { KeycloakEnvs, FrontEnvs } from 'src/config';
 import type { AuthStore } from './store/auth.store';
 import { AUTH_STORE } from './store/auth.store';
 import type { SessionData } from './interfaces';
+import { KeycloakClientService } from 'src/keycloak/keycloak-client.service';
 
 const base = KeycloakEnvs.authServerUrl;
 const realm = KeycloakEnvs.realm;
@@ -52,7 +53,10 @@ function deriveRedirectUri(returnTo?: string): string {
 
 @Injectable()
 export class AuthService {
-  constructor(@Inject(AUTH_STORE) private readonly store: AuthStore) {}
+  constructor(
+    @Inject(AUTH_STORE) private readonly store: AuthStore,
+    private readonly kc: KeycloakClientService, // Nuevo servicio centralizado de Keycloak
+  ) {}
 
   // 1) Build URL de autorización y guarda pending (state→PKCE/returnTo/redirectUri/clientId)
   async buildAuthUrl(opts: { returnTo: string; clientId: string }) {
@@ -291,6 +295,16 @@ export class AuthService {
     return { accessToken: set.accessToken, expiresIn: set.expiresAt, sub: s.sub, roles: set.roles };
   }
 
+  /** (Opcional) Verificación criptográfica del access_token guardado (issuer + azp∈permitidos) */
+  async verifySessionAccessToken(sessionId: string, clientId: string) {
+    const s = await this.store.getSession(sessionId);
+    if (!s) throw new Error('Sesión inválida o expirada');
+    const set = s.clients?.[clientId];
+    if (!set?.accessToken) throw new Error('No hay access_token para el client_id');
+    const allowed = Object.keys(ALLOWED_CLIENTS);
+    return this.kc.verifyAccessToken(set.accessToken, { allowedClients: allowed });
+  }
+
   // ====== JWT helpers ======
   private parseJwt(jwt?: string): any | undefined {
     try {
@@ -317,26 +331,17 @@ export class AuthService {
   }
 
   // ====== UMA / Entitlements ======
-  private async fetchUmaPermissions(
-    accessToken: string,
-    audience: string,
-    responseMode: 'permissions' | 'decision' = 'permissions',
-  ) {
-    const body = new URLSearchParams();
-    body.set('grant_type', 'urn:ietf:params:oauth:grant-type:uma-ticket');
-    body.set('audience', audience);
-    body.set('response_mode', responseMode);
 
-    const { data } = await axios.post(this.tokenEndpoint(), body, {
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-        authorization: `Bearer ${accessToken}`,
-      },
-      timeout: 10_000,
+  /**
+   * Devuelve permisos normalizados (array de strings) usando SIEMPRE response_mode=permissions.
+   * Se ignora cualquier "decision" que externamente intenten pasar.
+   */
+  private async fetchUmaPermissions(accessToken: string, audience: string) {
+    const data = await this.kc.umaRequest(accessToken, {
+      audience,
+      responseMode: 'permissions',
     });
 
-    // response_mode=permissions -> lista de { resource_id?, resource_name?, scopes?[] }
-    // Normalizamos a strings "resource:scope" cuando sea posible.
     const normalize = (perm: any) => {
       const res = perm.rsname ?? perm.rsid ?? 'unknown';
       const scopes: string[] = Array.isArray(perm.scopes) ? perm.scopes : [];
@@ -348,9 +353,38 @@ export class AuthService {
       const flat = data.flatMap(normalize);
       return Array.from(new Set(flat)); // únicos
     }
+    return [];
+  }
 
-    // Si response_mode=decision, data = { result: boolean }
-    return data;
+  /**
+   * Nueva API: decisión booleana para un permission específico ("resource#scope"),
+   * usando response_mode=decision.
+   */
+  async evaluatePermission(params: {
+    sessionId: string;
+    clientId: string;
+    audience: string;       // resource server/cliente API en Keycloak
+    resource: string;       // nombre del recurso (rsname)
+    scope: string;          // scope de UMA
+  }): Promise<boolean> {
+    const { sessionId, clientId, audience, resource, scope } = params;
+
+    const s = await this.store.getSession(sessionId);
+    if (!s) throw new Error('Sesión inválida o expirada');
+    const set = s.clients?.[clientId];
+    if (!set?.accessToken) throw new Error('No hay access_token para el client_id');
+
+    try {
+      const data = await this.kc.umaRequest(set.accessToken, {
+        audience,
+        responseMode: 'decision',
+        permission: `${resource}#${scope}`,
+      });
+      return !!data?.result;
+    } catch (e: any) {
+      log.warn(`UMA decision error audience=${audience} perm=${resource}#${scope}: ${e?.message ?? e}`);
+      return false;
+    }
   }
 
   // ====== Facade para /auth/me ======
@@ -358,9 +392,10 @@ export class AuthService {
     sessionId: string;
     clientId: string;
     audience?: string;
+    // responseMode ignorado: siempre usamos "permissions"
     responseMode?: 'permissions' | 'decision';
   }) {
-    const { sessionId, clientId, audience, responseMode = 'permissions' } = params;
+    const { sessionId, clientId, audience } = params;
 
     const s = await this.store.getSession(sessionId);
     if (!s) throw new Error('Sesión inválida o expirada');
@@ -371,13 +406,12 @@ export class AuthService {
     const profile = this.peekUserProfile(set.accessToken);
     const roles = set.roles ?? this.peekJwtRoles(set.accessToken, clientId) ?? [];
 
-    let permissions: string[] | { result: boolean } | undefined;
+    let permissions: string[] | undefined;
     if (audience) {
       try {
-        permissions = await this.fetchUmaPermissions(set.accessToken, audience, responseMode);
+        permissions = await this.fetchUmaPermissions(set.accessToken, audience); // siempre permissions
       } catch (e: any) {
         log.warn(`UMA permissions error audience=${audience}: ${e?.message ?? e}`);
-        // No rompas /me por error de UMA; devuelve lo disponible
       }
     }
 
@@ -390,26 +424,26 @@ export class AuthService {
       email: profile?.email,
       email_verified: profile?.email_verified,
       roles,
-      permissions, // puede ser undefined si no se pidió audience
+      permissions, // undefined si no se pidió audience
       expiresAt: set.expiresAt,
       tokenType: s.tokenType,
       clientId,
     };
   }
 
-  // ====== Endpoint específico sólo-permisos (opcional pero práctico) ======
+  // ====== Endpoint específico sólo-permisos (siempre permissions) ======
   async getPermissions(params: {
     sessionId: string;
     clientId: string;
     audience: string;
-    responseMode?: 'permissions' | 'decision';
+    // responseMode ignorado para mantener compatibilidad con el Controller
   }) {
-    const { sessionId, clientId, audience, responseMode = 'permissions' } = params;
+    const { sessionId, clientId, audience } = params;
     const s = await this.store.getSession(sessionId);
     if (!s) throw new Error('Sesión inválida o expirada');
     const set = s.clients?.[clientId];
     if (!set) throw new Error('No hay tokens para el client_id solicitado');
 
-    return this.fetchUmaPermissions(set.accessToken, audience, responseMode);
+    return this.fetchUmaPermissions(set.accessToken, audience); // siempre permissions
   }
 }

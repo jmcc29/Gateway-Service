@@ -1,31 +1,45 @@
+// src/auth/guards/valid-token.guard.ts
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
-import { NatsService } from 'src/common';
+import { Request } from 'express';
+import { AuthService } from '../auth.service';
+import { extractSid, extractClientId } from '../utils/http';
+
 @Injectable()
 export class ValidTokenGuard implements CanActivate {
-  constructor(private nats: NatsService) {}
+  constructor(private readonly auth: AuthService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest();
-    const auth = req.headers['authorization'];
+    const req = context.switchToHttp().getRequest<Request>();
 
-    if (!auth || !auth.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Token no enviado');
+    const sid = extractSid(req);
+    const clientId = extractClientId(req);
+
+    if (!sid) {
+      throw new UnauthorizedException('Falta cookie de sesión (sid)');
+    }
+    if (!clientId) {
+      throw new UnauthorizedException('Falta client_id (x-client-id o ?client_id)');
     }
 
-    const accessToken = auth.split(' ')[1];
-
+    // 1) Verificación criptográfica del access_token guardado en la sesión
+    let valid = false;
     try {
-      const result = await this.nats.firstValue('ldap-auth.validateToken', { accessToken });
-
-      if (!result?.isValid) {
-        throw new UnauthorizedException('Token inválido');
-      }
-
-      // Adjuntar info del usuario al request
-      req.user = result.user;
-      return true;
-    } catch (err) {
-      throw new UnauthorizedException('Error al validar el token');
+      valid = (await this.auth.verifySessionAccessToken(sid, clientId)).isValid;
+    } catch {
+      valid = false;
     }
+    if (!valid) {
+      throw new UnauthorizedException('Token inválido o sesión expirada para este client_id');
+    }
+
+    // 2) (Opcional) Adjuntar perfil al request; si falla no bloquea
+    try {
+      const me = await this.auth.getProfile({ sessionId: sid, clientId });
+      (req as any).user = me;
+    } catch {
+      // Silencioso: ya validamos el token; el perfil es “nice to have”
+    }
+
+    return true;
   }
 }

@@ -8,6 +8,7 @@ import { CommonModule } from './common/common.module';
 import { DatabaseModule } from './database/database.module';
 import { PracticeModule } from './practice/practice.module';
 import { TokenFromSidMiddleware } from './auth/middlewares/token.middleware';
+import { KeycloakModule } from './keycloak/keycloak.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { TokenFromSidMiddleware } from './auth/middlewares/token.middleware';
     CommonModule,
     DatabaseModule,
     PracticeModule,
+    KeycloakModule,
   ],
 })
 export class AppModule implements NestModule{

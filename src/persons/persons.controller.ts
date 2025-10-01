@@ -36,6 +36,7 @@ export class PersonsController {
   ) {}
 
   //@Scope(ValidScopes.viewFingerprint)
+  @UseGuards(ValidTokenGuard)
   @Get('showListFingerprint')
   @ApiResponse({
     status: 200,

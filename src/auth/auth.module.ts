@@ -4,7 +4,9 @@ import { AuthController } from './auth.controller';
 import { NatsService } from 'src/common';
 import { AUTH_STORE } from './store/auth.store';
 import { MemoryAuthStore } from './store/memory.store';
+import { KeycloakModule } from 'src/keycloak/keycloak.module';
 @Module({
+  imports: [KeycloakModule],
   controllers: [AuthController],
   providers: [AuthService, NatsService, { provide: AUTH_STORE, useClass: MemoryAuthStore }],
   exports: [AuthService],

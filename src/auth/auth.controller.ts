@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
-import { ApiTags, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiResponse, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { Redirect } from '@nestjs/common';
 
 @ApiTags('Auth')
@@ -129,7 +129,6 @@ export class AuthController {
     @Query('sid') sidFromQuery?: string,
     @Query('client_id') clientId?: string,
     @Query('audience') audience?: string,
-    @Query('response_mode') responseMode?: 'permissions' | 'decision',
   ) {
     const sid = sidFromQuery ?? (req as any).cookies?.sid;
     if (!sid) throw new UnauthorizedException('No se encontró ID de sesión');
@@ -141,9 +140,8 @@ export class AuthController {
         sessionId: sid,
         clientId,
         audience,
-        responseMode,
       });
-      return { audience, response_mode: responseMode ?? 'permissions', data };
+      return { audience, response_mode: 'permissions', data };
     } catch (err: any) {
       throw new UnauthorizedException(err?.message ?? 'No fue posible obtener permisos');
     }
@@ -182,6 +180,98 @@ export class AuthController {
       });
     } catch (err: any) {
       throw new UnauthorizedException(err?.message ?? 'Sesión inválida');
+    }
+  }
+
+  /**
+   * EVALUATE-PERMISSION (UMA decision):
+   * Devuelve booleano para un permission concreto "resource#scope".
+   * Usa el access_token asociado a (sid, client_id).
+   */
+  @Post('evaluate-permission')
+  @ApiQuery({ name: 'sid', required: false, description: 'ID de sesión (si no, cookie "sid")' })
+  @ApiQuery({
+    name: 'client_id',
+    required: true,
+    description: 'client_id desde el que se toma el access_token del usuario',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        audience: { type: 'string', example: 'my-resource-server' },
+        resource: { type: 'string', example: 'orders' },
+        scope: { type: 'string', example: 'read' },
+      },
+      required: ['audience', 'resource', 'scope'],
+    },
+  })
+  async evaluatePermission(
+    @Req() req: Request,
+    @Query('sid') sidFromQuery: string | undefined,
+    @Query('client_id') clientId: string | undefined,
+    @Body()
+    body: {
+      audience?: string;
+      resource?: string;
+      scope?: string;
+    },
+  ) {
+    const sid = sidFromQuery ?? (req as any).cookies?.sid;
+    if (!sid) throw new UnauthorizedException('No se encontró ID de sesión');
+    if (!clientId) throw new BadRequestException('Falta client_id');
+
+    const { audience, resource, scope } = body ?? {};
+    if (!audience) throw new BadRequestException('Falta audience');
+    if (!resource) throw new BadRequestException('Falta resource');
+    if (!scope) throw new BadRequestException('Falta scope');
+
+    try {
+      const allowed = await this.authService.evaluatePermission({
+        sessionId: sid,
+        clientId,
+        audience,
+        resource,
+        scope,
+      });
+      return { audience, permission: `${resource}#${scope}`, allowed };
+    } catch (err: any) {
+      throw new UnauthorizedException(err?.message ?? 'No fue posible evaluar el permiso');
+    }
+  }
+
+  /**
+   * VERIFY (opcional): Verifica criptográficamente el access_token de la sesión
+   * y que azp ∈ clientes permitidos. Útil para diagnósticos/observabilidad.
+   */
+  @Get('verify')
+  @ApiQuery({ name: 'sid', required: false, description: 'ID de sesión (si no, cookie "sid")' })
+  @ApiQuery({
+    name: 'client_id',
+    required: true,
+    description: 'client_id desde el que se toma el access_token del usuario',
+  })
+  async verify(
+    @Req() req: Request,
+    @Query('sid') sidFromQuery?: string,
+    @Query('client_id') clientId?: string,
+  ) {
+    const sid = sidFromQuery ?? (req as any).cookies?.sid;
+    if (!sid) throw new UnauthorizedException('No se encontró ID de sesión');
+    if (!clientId) throw new BadRequestException('Falta client_id');
+
+    try {
+      const v = await this.authService.verifySessionAccessToken(sid, clientId);
+      return {
+        isValid: v.isValid,
+        sub: v.sub,
+        azp: v.azp,
+        aud: v.aud,
+        roles: v.roles,
+        user: v.user,
+      };
+    } catch (err: any) {
+      throw new UnauthorizedException(err?.message ?? 'Token inválido');
     }
   }
 }
