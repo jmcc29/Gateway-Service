@@ -10,7 +10,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiCookieAuth, ApiOperation, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { Response, Request } from 'express';
 import { AuthAppMobileGuard } from 'src/auth/guards';
 import { NatsService } from 'src/common';
@@ -21,6 +21,7 @@ import { Query } from '@nestjs/common';
 import { ApiQuery } from '@nestjs/swagger';
 
 @ApiTags('auth')
+@ApiSecurity('origin-header')
 // @UseInterceptors(Records)
 @Controller('auth')
 export class AuthController {
@@ -173,6 +174,7 @@ export class AuthController {
         state: { type: 'string', example: 'xyz789' },
       },
       required: ['code', 'state'],
+
     },
   })
   @Post('exchange')
@@ -205,34 +207,8 @@ export class AuthController {
    *  Endpoints útiles de sesión (para debug / status)
    * ====================================================== */
 
-  @Get('session')
-  async getSession(
-    @Query('clientId') clientId: string,
-    @Query('sid') sid: string,
-    @Res() res: Response,
-  ) {
-    console.log('getSession', { clientId, sid });
-    if (!sid || !clientId) {
-      return res.status(400).json({ ok: false, message: 'Faltan parámetros sid o clientId' });
-    }
-
-    try {
-      const data = await this.nats.firstValue('auth.session.get', { sid, clientId });
-      console.log('Datos de sesión obtenidos:', data);
-
-      if (!data)
-        return res.status(404).json({ ok: false, message: 'Sesión no encontrada o expirada' });
-      if ((data as any).accessToken) (data as any).accessToken = '***redacted***';
-      return res.status(200).json({ ok: true, ...data });
-    } catch (err: any) {
-      return res
-        .status(502)
-        .json({ ok: false, message: String(err?.message || 'Fallo al consultar sesión') });
-    }
-  }
-
   @ApiOperation({ summary: 'OIDC - Logout SSO (revoca tokens y elimina sid)' })
-  @Post('logout')
+  @Delete('logout')
   async ssoLogout(@Req() req: Request, @Res() res: Response) {
     const sid = req.cookies?.sid;
     console.log('Logout OIDC - cerrando sesión:', { sid });
@@ -247,5 +223,157 @@ export class AuthController {
     // El backend NO elimina cookies del navegador (lo hace el frontend)
     res.setHeader('Cache-Control', 'no-store');
     return res.status(204).send(); // No Content
+  }
+
+  /* ======================================================
+   *  Endpoints útiles de autorización (para debug / status)
+   * ====================================================== */
+
+  @ApiOperation({ summary: 'Auth Plataforma - getProfile' })
+  @Get('profile')
+  async getProfile(@Req() req: Request, @Res() res: Response) {
+    const sid = req.cookies?.sid;
+    if (!sid) return res.status(401).json({ ok: false, message: 'Falta cookie sid' });
+
+    const origin =
+      (req.headers.origin as string) ||
+      (req.headers['x-origin'] as string) ||
+      (req.headers.referer as string) ||
+      (req.headers['x-referer'] as string);
+    console.log('getProfile', { sid, origin });
+    try {
+      const data = await this.nats.firstValue('auth.profile.get', { sid, origin });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json(data);
+    } catch (e: any) {
+      return res
+        .status(401)
+        .json({ ok: false, code: 'PROFILE_LOOKUP_FAILED', message: e?.message ?? 'Unauthorized' });
+    }
+  }
+
+  @ApiOperation({ summary: 'Verificar existencia y validez del access token de un cliente' })
+  @Get('token/verify')
+  async verifyTokenEndpoint(
+    @Query('clientId') client_id: string,
+    @Req() req: Request, @Res() res: Response
+    ) {
+      console.log('sid');
+    const sid = req.cookies?.sid;
+    
+    if (!sid) return res.status(401).json({ ok: false, message: 'Falta cookie sid' });
+
+    const clientId = req.query?.clientId || client_id;
+    if (!clientId) return res.status(400).json({ ok: false, message: 'Falta clientId' });
+
+    console.log('Verifying token for clientId:', clientId, sid);
+    const origin =
+      // (req.headers.origin as string) ||
+      (req.headers['x-origin'] as string) 
+      // (req.headers.referer as string) ||
+      // (req.headers['x-referer'] as string);
+
+    console.log('verifyToken', { sid, clientId, origin });
+    try {
+      const data = await this.nats.firstValue('auth.token.verify', { sid, clientId, origin });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json(data);
+    } catch (e: any) {
+      return res
+        .status(401)
+        .json({ ok: false, code: 'PROFILE_LOOKUP_FAILED', message: e?.message ?? 'Unauthorized' });
+    }
+  }
+
+
+  @ApiOperation({ summary: 'Listar permisos UMA para un audience (resource-server)' })
+  @ApiQuery({ name: 'audience', type: String, required: true })
+  @Get('permissions')
+  async getPermissions(
+    @Req() req: Request,
+    @Res() res: Response,
+    // @Query('clientId') clientId: string,
+    @Query('audience') aud: string,
+
+  ) {
+    const sid = req.cookies?.sid /* || sessionId*/ ;
+    
+    if (!sid) return res.status(401).json({ ok: false, message: 'Falta cookie sid' });
+
+    const audience = req.query.audience || aud /* || aud*/;
+    if (!audience) return res.status(400).json({ ok: false, message: 'Falta audience' });
+
+    const origin =
+      (req.headers['x-origin'] as string) ||
+      (req.headers.origin as string) ||
+      (req.headers.referer as string) ||
+      (req.headers['x-referer'] as string);
+    console.log('getPermissions', { sid, audience, origin });
+    try {
+      const out = await this.nats.firstValue('auth.permissions.list', {
+        sid,
+        audience,
+        origin,
+      });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json(out);
+    } catch (e: any) {
+      return res
+        .status(401)
+        .json({
+          ok: false,
+          code: 'PERMISSIONS_LIST_FAILED',
+          message: e?.message ?? 'Unauthorized',
+        });
+    }
+  }
+
+  @ApiOperation({ summary: 'Evaluar permiso UMA (resource#scope) contra audience' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        audience: { type: 'string', example: 'records-api' },
+        resource: { type: 'string', example: 'expedientes' },
+        scope: { type: 'string', example: 'create' },
+      },
+      required: ['audience', 'resource', 'scope'],
+    },
+  })
+  @Post('permission/evaluate')
+  async evaluatePermission(@Req() req: Request, @Res() res: Response, @Body() body: any) {
+    const sid = req.cookies?.sid;
+    if (!sid) return res.status(401).json({ ok: false, message: 'Falta cookie sid' });
+
+    const { audience, resource, scope } = body ?? {};
+    if (!audience || !resource || !scope) {
+      return res.status(400).json({ ok: false, message: 'Faltan audience/resource/scope' });
+    }
+
+    const origin =
+      (req.headers['x-origin'] as string) ||
+      (req.headers.origin as string) ||
+      (req.headers.referer as string) ||
+      (req.headers['x-referer'] as string);
+    try {
+      const out = await this.nats.firstValue('auth.permission.evaluate', {
+        sid,
+        audience,
+        resource,
+        scope,
+        origin,
+      });
+      console.log('evaluatePermission response', out);
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json(out);
+    } catch (e: any) {
+      return res
+        .status(401)
+        .json({
+          ok: false,
+          code: 'PERMISSION_EVALUATE_FAILED',
+          message: e?.message ?? 'Unauthorized',
+        });
+    }
   }
 }
