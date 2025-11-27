@@ -25,7 +25,7 @@ async function bootstrap() {
   app.enableCors({
     origin: FrontEnvs.frontendServers,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS', // Añadir OPTIONS
-    allowedHeaders: ['Content-Type', 'Authorization', 'credentials'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'credentials', 'x-origin'],
     credentials: true, // Si estás utilizando cookies o encabezados de autenticación
   });
   app.useGlobalPipes(
@@ -44,6 +44,21 @@ async function bootstrap() {
       .setTitle('APIS DOCUMENTATION')
       .setDescription('Documentation of the Muserpol Microservices APIs')
       .setVersion('1.0')
+      .addCookieAuth('sid', {
+        type: 'apiKey',
+        in: 'cookie',
+        name: 'sid',
+        description: 'ID de sesión (sid) establecido por el Auth-Service',
+      })
+      .addApiKey(
+        {
+          type: 'apiKey',
+          name: 'x-origin',
+          in: 'header',
+          description: 'Origin del frontend (ej: http://192.168.2.5:3001)',
+        },
+        'origin-header',
+      )
       .build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api', app, document);
