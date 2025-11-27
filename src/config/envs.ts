@@ -1,6 +1,17 @@
 import 'dotenv/config';
 import * as joi from 'joi';
 
+type OidcClientsRecord = Record<string, unknown>;
+
+const safeJson = <T,>(raw: string | undefined, fallback: T): T => {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+};
+
 interface EnvVars {
   PORT: number;
   ENVIRONMENT: string;
@@ -29,6 +40,8 @@ interface EnvVars {
   SMS_SERVER_ROOT: string;
   SMS_SERVER_PASSWORD: string;
   SMS_PROVIDER: string;
+
+  OIDC_CLIENTS?: string;
 }
 
 const envsSchema = joi
@@ -58,6 +71,8 @@ const envsSchema = joi
     DB_HOST: joi.string().required(),
     DB_PORT: joi.number().required(),
     DB_USERNAME: joi.string().required(),
+
+    OIDC_CLIENTS: joi.string(),
   })
   .unknown(true);
 
@@ -114,3 +129,6 @@ export const smsEnvs = {
   smsServerPassword: envVars.SMS_SERVER_PASSWORD,
   smsProvider: envVars.SMS_PROVIDER,
 };
+
+const rawOidcClients = safeJson<OidcClientsRecord>(envVars.OIDC_CLIENTS, {});
+export const OidcClientIds: string[] = Object.keys(rawOidcClients);
