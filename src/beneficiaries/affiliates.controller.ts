@@ -7,7 +7,6 @@ import {
   Param,
   Patch,
   Post,
-  Req,
   Res,
   UploadedFiles,
   UseInterceptors,
@@ -21,10 +20,9 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { WebController, WebPermission } from 'src/auth/decorators/web-authorization.decorators';
 import { FtpService, NatsService, RecordsService } from 'src/common';
-import { AnalyzeDocumentsDto, ImportDocumentsDto } from './dto';
 
 @ApiTags('beneficiaries')
 @WebController('beneficiary', 'affiliates')
@@ -427,26 +425,4 @@ export class AffiliatesController {
     return this.nats.send('affiliate.collateDocuments', { affiliateId, modalityId });
   }
 
-  @Post('documents/analysis')
-  @WebPermission('import', 'documents')
-  async documentsAnalysis(
-    @Body() _body: AnalyzeDocumentsDto,
-    @Req() request: Request & { user?: { username: string; name?: string } },
-  ) {
-    return this.nats.send('affiliate.documentsAnalysis', {
-      actor: request.user,
-    });
-  }
-
-  @Post('documents/imports')
-  @WebPermission('import', 'documents')
-  async documentsImports(
-    @Body() body: ImportDocumentsDto,
-    @Req() request: Request & { user?: { username: string; name?: string } },
-  ) {
-    return this.nats.send('affiliate.documentsImports', {
-      importId: body.importId,
-      actor: request.user,
-    });
-  }
 }
